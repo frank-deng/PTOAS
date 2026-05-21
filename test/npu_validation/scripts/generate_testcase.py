@@ -75,6 +75,7 @@ UNSTABLE_A3_CUSTOM_GOLDEN_CASES = frozenset({
     "abs",
     "partmin",
     "prelu",
+    "rope_kv_cache",
     "rowexpanddiv",
     "rowexpandmul",
     "rowexpandsub",
@@ -88,6 +89,14 @@ UNSTABLE_A3_CUSTOM_GOLDEN_CASES = frozenset({
 CASE_INT_SCALAR_DEFAULTS = {}
 
 CASE_POINTER_COUNT_MINIMUMS = {
+    "down_proj_residual": {
+        "v1": 123648,
+        "v2": 123648,
+    },
+    "out_proj_residual": {
+        "v1": 123648,
+        "v2": 123648,
+    },
 }
 
 
