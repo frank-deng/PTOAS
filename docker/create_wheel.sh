@@ -51,6 +51,9 @@ rm -rf "${PY_PACKAGE_DIR}/tilelang_dsl" "${PY_PACKAGE_DIR}/TileOps"
 cp -R "${PTO_INSTALL_DIR}/tilelang_dsl" "${PY_PACKAGE_DIR}/tilelang_dsl"
 cp -R "${PTO_INSTALL_DIR}/share/ptoas/TileOps" "${PY_PACKAGE_DIR}/TileOps"
 
+# Copy ptodsl into the wheel so it is always shipped with ptoas
+cp -R "${PTO_SOURCE_DIR}/ptodsl/ptodsl" "${PY_PACKAGE_DIR}/ptodsl"
+
 # Copy platform-specific setup.py to package directory.
 # On macOS, use setup_mac.py and rename it to setup.py in the build dir.
 SETUP_TEMPLATE="${PTO_SOURCE_DIR}/docker/setup.py"

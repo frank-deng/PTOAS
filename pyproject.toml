@@ -10,6 +10,7 @@
 # Environment variables (all optional):
 #   LLVM_BUILD_DIR               Path to LLVM build dir
 #                                (default: /llvm-workspace/llvm-project/build-shared)
+#   PTO_BUILD_DIR                Path to PTOAS build dir (default: <repo>/build)
 #   PTO_INSTALL_DIR              Install prefix (default: <repo>/install)
 #   PTOAS_PYTHON_PACKAGE_VERSION Wheel version override
 
