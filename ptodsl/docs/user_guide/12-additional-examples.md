@@ -46,7 +46,7 @@ def mat_add(A, B, O, *, BLOCK_M: pto.constexpr = 64, BLOCK_N: pto.constexpr = 12
 
 The Python wrapper follows the same pattern as Chapter 2:
 
-<!-- ptodsl-doc-pending: host-side wrapper behavior is outside the current compile-only docs contract -->
+<!-- ptodsl-doc-test: {"mode":"launch_fragment","fixture":"launch.mat_add_wrapper","symbol":"mat_add_wrapper"} -->
 ```python
 def mat_add_wrapper(A, B, O=None, stream=None):
     if O is None:
@@ -248,11 +248,14 @@ def gemm(
 
 ### 12.3.3 Python wrapper
 
-<!-- ptodsl-doc-pending: host-side wrapper uses pto.empty(...) allocation behavior that is outside the current compile-only docs contract -->
+<!-- ptodsl-doc-test: {"mode":"launch_fragment","fixture":"launch.gemm_wrapper","symbol":"gemm_wrapper"} -->
 ```python
+import numpy as np
+
+
 def gemm_wrapper(A, B, O=None, stream=None):
     if O is None:
-        O = pto.empty([A.shape[0], B.shape[1]], dtype=A.dtype)
+        O = np.empty((A.shape[0], B.shape[1]), dtype=A.dtype)
     compiled = gemm.compile(BLOCK_M=64, BLOCK_K=64, BLOCK_N=64)
     compiled[1, stream](A, B, O)
     return O

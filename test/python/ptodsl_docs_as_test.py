@@ -7,6 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -16,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from unittest import mock
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -24,6 +26,7 @@ sys.path.insert(0, str(REPO_ROOT / "ptodsl"))
 
 from ptodsl import pto, scalar
 from ptodsl._bootstrap import make_context
+from ptodsl._runtime.launch import LaunchHandle, _marshal_launch_args
 from mlir.ir import Module
 from ptodsl_docs_fragment_fixtures import FRAGMENT_FIXTURES, render_fragment_fixture
 
@@ -65,6 +68,15 @@ class DocTestDirective:
     symbol: str | None = None
     compile_kwargs: dict[str, object] | None = None
     fixture: str | None = None
+
+
+@dataclass(frozen=True)
+class LaunchRecord:
+    compiled: object
+    grid: int
+    stream: object
+    args: tuple[object, ...]
+    marshaled_arg_count: int
 
 
 def expect(condition: bool, message: str) -> None:
@@ -216,15 +228,38 @@ def parse_test_directive(block: MarkdownCodeBlock) -> DocTestDirective:
             )
         return DocTestDirective(mode=mode, symbol=symbol, compile_kwargs=compile_kwargs)
 
+    if mode == "launch_fragment":
+        expect(
+            isinstance(fixture, str) and fixture,
+            f"{block_label(block)}: ptodsl-doc-test launch_fragment metadata must define a non-empty string 'fixture'",
+        )
+        if symbol is not None:
+            expect(
+                isinstance(symbol, str) and symbol,
+                f"{block_label(block)}: ptodsl-doc-test launch_fragment 'symbol' must be a non-empty string when present",
+            )
+        expect(
+            compile_kwargs is None,
+            f"{block_label(block, symbol if isinstance(symbol, str) and symbol else None)}: "
+            "ptodsl-doc-test launch_fragment does not accept a 'compile' object; the snippet owns its compile/launch flow",
+        )
+        return DocTestDirective(mode=mode, symbol=symbol, fixture=fixture)
+
     expect(
         False,
         f"{block_label(block, symbol if isinstance(symbol, str) and symbol else None)}: "
-        f"unsupported ptodsl-doc-test mode {mode!r}; only 'compile' and 'compile_fragment' are supported",
+        f"unsupported ptodsl-doc-test mode {mode!r}; only 'compile', 'compile_fragment', and 'launch_fragment' are supported",
     )
     return DocTestDirective(mode=mode)
 
 
-def execute_source(source: str, block: MarkdownCodeBlock, symbol: str | None = None) -> dict[str, object]:
+def execute_source(
+    source: str,
+    block: MarkdownCodeBlock,
+    symbol: str | None = None,
+    *,
+    extra_namespace: dict[str, object] | None = None,
+) -> dict[str, object]:
     namespace: dict[str, object] = {
         "__builtins__": __builtins__,
         "__name__": "__ptodsl_doc_snippet__",
@@ -232,6 +267,8 @@ def execute_source(source: str, block: MarkdownCodeBlock, symbol: str | None = N
         "pto": pto,
         "scalar": scalar,
     }
+    if extra_namespace is not None:
+        namespace.update(extra_namespace)
     try:
         exec(compile(source, str(block.path), "exec"), namespace, namespace)
     except Exception as exc:
@@ -239,6 +276,27 @@ def execute_source(source: str, block: MarkdownCodeBlock, symbol: str | None = N
             f"{block_label(block, symbol)}: snippet execution failed: {exc.__class__.__name__}: {exc}"
         ) from exc
     return namespace
+
+
+@contextmanager
+def capture_launch_records():
+    records: list[LaunchRecord] = []
+
+    def fake_launch_call(self, *args):
+        marshaled = _marshal_launch_args(self._compiled._kernel_signature, args)
+        records.append(
+            LaunchRecord(
+                compiled=self._compiled,
+                grid=self._grid,
+                stream=self._stream,
+                args=tuple(args),
+                marshaled_arg_count=len(marshaled),
+            )
+        )
+        return None
+
+    with mock.patch.object(LaunchHandle, "__call__", new=fake_launch_call):
+        yield records
 
 
 def verify_compiled_target(
@@ -310,6 +368,60 @@ def run_compile_fragment_block(block: MarkdownCodeBlock, ptoas_bin: Path) -> Non
         ) from exc
     namespace = execute_source(rendered_source, block, directive.symbol)
     verify_compiled_target(block, directive, namespace, ptoas_bin)
+
+
+def run_launch_fragment_block(block: MarkdownCodeBlock, ptoas_bin: Path) -> None:
+    directive = parse_test_directive(block)
+    expect(
+        directive.fixture is not None,
+        f"{block_label(block, directive.symbol)}: launch_fragment mode requires a fixture id",
+    )
+    expect(
+        directive.fixture in FRAGMENT_FIXTURES,
+        f"{block_label(block, directive.symbol)}: unknown fragment fixture {directive.fixture!r}",
+    )
+    try:
+        rendered_source = render_fragment_fixture(FRAGMENT_FIXTURES[directive.fixture], block.text)
+    except ValueError as exc:
+        raise AssertionError(
+            f"{block_label(block, directive.symbol)}: fragment fixture {directive.fixture!r} is invalid: {exc}"
+        ) from exc
+
+    with capture_launch_records() as launch_records:
+        execute_source(
+            rendered_source,
+            block,
+            directive.symbol,
+            extra_namespace={"PTODSL_DOC_LAUNCH_RECORDS": launch_records},
+        )
+
+    expect(
+        bool(launch_records),
+        f"{block_label(block, directive.symbol)}: launch_fragment snippet did not execute any compiled[grid, stream](...) launch",
+    )
+
+    seen_compiled_ids: set[int] = set()
+    for record in launch_records:
+        compiled = record.compiled
+        compiled_id = id(compiled)
+        if compiled_id in seen_compiled_ids:
+            continue
+        seen_compiled_ids.add(compiled_id)
+        try:
+            compiled.verify()
+        except Exception as exc:
+            raise AssertionError(
+                f"{block_label(block, directive.symbol)}: compiled launch target verify() failed: "
+                f"{exc.__class__.__name__}: {exc}"
+            ) from exc
+        mlir_text = compiled.mlir_text()
+        expect(
+            isinstance(mlir_text, str) and mlir_text.strip(),
+            f"{block_label(block, directive.symbol)}: compiled launch target should expose non-empty mlir_text()",
+        )
+        label = block_label(block, directive.symbol or getattr(compiled, "ir_function_name", None))
+        expect_parse_roundtrip_and_verify(mlir_text, label)
+        run_ptoas_frontend_verify(ptoas_bin, mlir_text, label)
 
 def scan_markdown_file(path: Path) -> MarkdownScanResult:
     lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
@@ -394,18 +506,21 @@ def collect_test_blocks(blocks: Iterable[MarkdownCodeBlock]) -> tuple[MarkdownCo
     )
 
 
-def summarize_test_modes(blocks: Iterable[MarkdownCodeBlock]) -> tuple[int, int]:
+def summarize_test_modes(blocks: Iterable[MarkdownCodeBlock]) -> tuple[int, int, int]:
     compile_count = 0
     compile_fragment_count = 0
+    launch_fragment_count = 0
     for block in blocks:
         directive = parse_test_directive(block)
         if directive.mode == "compile":
             compile_count += 1
         elif directive.mode == "compile_fragment":
             compile_fragment_count += 1
+        elif directive.mode == "launch_fragment":
+            launch_fragment_count += 1
         else:
             raise AssertionError(f"{block_label(block)}: unsupported docs-as-test mode {directive.mode!r}")
-    return compile_count, compile_fragment_count
+    return compile_count, compile_fragment_count, launch_fragment_count
 
 
 def main() -> None:
@@ -416,19 +531,19 @@ def main() -> None:
     tagged_python_blocks = collect_tagged_python_blocks(python_blocks)
     test_count, pending_count = summarize_metadata(tagged_python_blocks)
     test_blocks = collect_test_blocks(tagged_python_blocks)
-    compile_test_count, compile_fragment_test_count = summarize_test_modes(test_blocks)
+    compile_test_count, compile_fragment_test_count, launch_fragment_test_count = summarize_test_modes(test_blocks)
 
     expect(bool(results), f"no markdown files found under {USER_GUIDE_ROOT}")
     expect(bool(python_blocks), f"no Python fenced code blocks found under {USER_GUIDE_ROOT}")
 
-    if compile_test_count or compile_fragment_test_count:
+    if compile_test_count or compile_fragment_test_count or launch_fragment_test_count:
         try:
             ptoas_bin = resolve_ptoas_binary()
         except FileNotFoundError as exc:
             compile_blocks = [
                 block
                 for block in test_blocks
-                if parse_test_directive(block).mode in ("compile", "compile_fragment")
+                if parse_test_directive(block).mode in ("compile", "compile_fragment", "launch_fragment")
             ]
             fail_doc(compile_blocks[0].path, compile_blocks[0].start_line, str(exc))
     else:
@@ -444,6 +559,12 @@ def main() -> None:
                 f"{block_label(block, directive.symbol)}: missing ptoas binary for compile_fragment-mode docs test",
             )
             run_compile_fragment_block(block, ptoas_bin)
+        elif directive.mode == "launch_fragment":
+            expect(
+                ptoas_bin is not None,
+                f"{block_label(block, directive.symbol)}: missing ptoas binary for launch_fragment-mode docs test",
+            )
+            run_launch_fragment_block(block, ptoas_bin)
         else:
             raise AssertionError(f"{block_label(block)}: unsupported docs-as-test mode {directive.mode!r}")
 
@@ -455,7 +576,8 @@ def main() -> None:
         "ptodsl_docs_as_test: scanned "
         f"{markdown_count} markdown files, {block_count} fenced blocks, {python_count} python blocks "
         f"({test_count} test = {compile_test_count} compile + "
-        f"{compile_fragment_test_count} compile_fragment, {pending_count} pending, {untracked_count} untracked)"
+        f"{compile_fragment_test_count} compile_fragment + {launch_fragment_test_count} launch_fragment, "
+        f"{pending_count} pending, {untracked_count} untracked)"
     )
 
 

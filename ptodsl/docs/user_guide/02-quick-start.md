@@ -137,7 +137,7 @@ Here `rows` and `cols` are dynamic — they come from `A.shape` and can differ a
 
 Once the kernel is defined, you compile it and then launch it:
 
-<!-- ptodsl-doc-pending: host-side compile-and-launch flow is documented but not covered by compile-only docs contract -->
+<!-- ptodsl-doc-test: {"mode":"launch_fragment","fixture":"launch.blocked_copy_compile_and_launch","symbol":"blocked_copy"} -->
 ```python
 # Compile once, cache the result.
 compiled = blocked_copy.compile(BLOCK=128)

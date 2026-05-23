@@ -66,13 +66,20 @@ Section 3.2 covers the two models in detail.
 
 ### Compilation and launch
 
-<!-- ptodsl-doc-pending: host-side compile-and-launch flow is documented but not covered by compile-only docs contract -->
+<!-- ptodsl-doc-test: {"mode":"launch_fragment","fixture":"launch.generic_compile_and_launch","symbol":"kernel_name"} -->
 ```python
+import numpy as np
+
+
 # Compile (traces the body, lowers through PTOAS, caches the result)
 compiled = kernel_name.compile(CONST_A=128, CONST_B=64)
 
+# Allocate or obtain concrete tensors that match the declared host ABI.
+A = np.random.randn(4, 128).astype(np.float32)
+O = np.empty_like(A)
+
 # Launch on NPU
-compiled[grid, stream](tensor_1, tensor_2, ...)
+compiled[grid, stream](A, O)
 ```
 
 - `.compile(**constexprs)` — traces the kernel body with the given constexpr

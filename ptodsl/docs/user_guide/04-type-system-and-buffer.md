@@ -127,9 +127,9 @@ Masks are typed by bit granularity and must match the vector element width:
 
 Use `make_mask` to generate a mask from a pattern or scalar — it automatically selects the correct bit width from the element dtype:
 
-<!-- ptodsl-doc-pending: documented make_mask API is not yet exposed -->
+<!-- ptodsl-doc-test: {"mode":"compile_fragment","fixture":"type_system.make_mask","symbol":"type_system_make_mask_probe","compile":{}} -->
 ```python
-active     = pto.make_mask(pto.f16, "PAT_ALL")   # pattern-based full mask
+active       = pto.make_mask(pto.f16, pto.MaskPattern.ALL)  # pattern-based full mask
 tail_mask, _ = pto.make_mask(pto.f32, tail_count) # load mask from tail count scalar
 ```
 

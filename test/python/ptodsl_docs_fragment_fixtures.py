@@ -167,6 +167,14 @@ FRAGMENT_FIXTURES = {
             {SNIPPET_PLACEHOLDER}
         """
     ),
+    "type_system.make_mask": _fixture(
+        f"""
+        @pto.jit(target="a5")
+        def type_system_make_mask_probe():
+            tail_count = pto.const(16, dtype=pto.i32)
+            {SNIPPET_PLACEHOLDER}
+        """
+    ),
     "quick_start.make_tensor_view": _fixture(
         f"""
         @pto.jit(target="a5")
@@ -217,6 +225,184 @@ FRAGMENT_FIXTURES = {
             a_tile = pto.alloc_tile(shape=[1, BLOCK], dtype=pto.f32)
             o_tile = pto.alloc_tile(shape=[1, BLOCK], dtype=pto.f32)
             {SNIPPET_PLACEHOLDER}
+        """
+    ),
+    "launch.flash_attention_wrapper": _fixture(
+        f"""
+        import numpy as np
+
+
+        @pto.jit(target="a5")
+        def flash_attention_kernel(
+            Q: pto.tensor_spec(rank=4, dtype=pto.f32),
+            K: pto.tensor_spec(rank=4, dtype=pto.f32),
+            V: pto.tensor_spec(rank=4, dtype=pto.f32),
+            O: pto.tensor_spec(rank=4, dtype=pto.f32),
+            *,
+            BLOCK_Q: pto.constexpr = 128,
+            BLOCK_KV: pto.constexpr = 128,
+            CAUSAL: pto.constexpr = False,
+        ):
+            pto.get_block_idx()
+
+
+        batch = 2
+        heads = 3
+        seq_q = 4
+        seq_k = 4
+        dim = 8
+        stream = object()
+        Q = np.random.randn(batch, seq_q, heads, dim).astype(np.float32)
+        K = np.random.randn(batch, seq_k, heads, dim).astype(np.float32)
+        V = np.random.randn(batch, seq_k, heads, dim).astype(np.float32)
+
+        {SNIPPET_PLACEHOLDER}
+
+        O = flash_attention(Q, K, V, causal=False)
+        assert O.shape == Q.shape
+        assert len(PTODSL_DOC_LAUNCH_RECORDS) == 1
+        record = PTODSL_DOC_LAUNCH_RECORDS[0]
+        assert record.grid == batch * heads
+        assert record.stream is stream
+        assert len(record.args) == 4
+        assert record.args[0] is Q
+        assert record.args[1] is K
+        assert record.args[2] is V
+        assert record.args[3] is O
+        assert record.marshaled_arg_count == 36
+        """
+    ),
+    "launch.blocked_copy_compile_and_launch": _fixture(
+        f"""
+        @pto.jit(target="a5")
+        def blocked_copy(
+            A: pto.tensor_spec(rank=2, dtype=pto.f32),
+            O: pto.tensor_spec(rank=2, dtype=pto.f32),
+            *,
+            BLOCK: pto.constexpr = 128,
+        ):
+            rows = A.shape[0]
+            cols = A.shape[1]
+            a_view = pto.make_tensor_view(A, shape=A.shape, strides=A.strides)
+            o_view = pto.make_tensor_view(O, shape=O.shape, strides=O.strides)
+            tile = pto.alloc_tile(shape=[1, BLOCK], dtype=pto.f32)
+            with pto.for_(0, rows, step=1) as row:
+                a_part = pto.partition_view(a_view, offsets=[row, 0], sizes=[1, cols])
+                o_part = pto.partition_view(o_view, offsets=[row, 0], sizes=[1, cols])
+                pto.tile.load(a_part, tile)
+                pto.tile.store(tile, o_part)
+
+
+        {SNIPPET_PLACEHOLDER}
+
+        assert len(PTODSL_DOC_LAUNCH_RECORDS) == 1
+        record = PTODSL_DOC_LAUNCH_RECORDS[0]
+        assert record.grid == 1
+        assert record.stream is None
+        assert len(record.args) == 2
+        assert record.args[0] is A
+        assert record.args[1] is O
+        assert record.marshaled_arg_count == 10
+        """
+    ),
+    "launch.generic_compile_and_launch": _fixture(
+        f"""
+        import numpy as np
+
+
+        @pto.jit(target="a5")
+        def kernel_name(
+            tensor_1: pto.tensor_spec(rank=2, dtype=pto.f32),
+            tensor_2: pto.tensor_spec(rank=2, dtype=pto.f32),
+            *,
+            CONST_A: pto.constexpr = 128,
+            CONST_B: pto.constexpr = 64,
+        ):
+            pto.get_block_idx()
+
+
+        grid = 2
+        stream = object()
+
+        {SNIPPET_PLACEHOLDER}
+
+        assert len(PTODSL_DOC_LAUNCH_RECORDS) == 1
+        record = PTODSL_DOC_LAUNCH_RECORDS[0]
+        assert record.grid == grid
+        assert record.stream is stream
+        assert len(record.args) == 2
+        assert record.args[0] is A
+        assert record.args[1] is O
+        assert record.marshaled_arg_count == 10
+        """
+    ),
+    "launch.mat_add_wrapper": _fixture(
+        f"""
+        import numpy as np
+
+
+        @pto.jit(target="a5")
+        def mat_add(
+            A: pto.tensor_spec(rank=3, dtype=pto.f32),
+            B: pto.tensor_spec(rank=3, dtype=pto.f32),
+            O: pto.tensor_spec(rank=3, dtype=pto.f32),
+            *,
+            BLOCK_M: pto.constexpr = 64,
+            BLOCK_N: pto.constexpr = 128,
+        ):
+            pto.get_block_idx()
+
+
+        {SNIPPET_PLACEHOLDER}
+
+        A = np.random.randn(2, 64, 128).astype(np.float32)
+        B = np.random.randn(2, 64, 128).astype(np.float32)
+        O = mat_add_wrapper(A, B, stream=None)
+        assert O.shape == A.shape
+        assert len(PTODSL_DOC_LAUNCH_RECORDS) == 1
+        record = PTODSL_DOC_LAUNCH_RECORDS[0]
+        assert record.grid == A.shape[0]
+        assert record.stream is None
+        assert len(record.args) == 3
+        assert record.args[0] is A
+        assert record.args[1] is B
+        assert record.args[2] is O
+        assert record.marshaled_arg_count == 21
+        """
+    ),
+    "launch.gemm_wrapper": _fixture(
+        f"""
+        import numpy as np
+
+
+        @pto.jit(target="a5")
+        def gemm(
+            A: pto.tensor_spec(rank=2, dtype=pto.f32),
+            B: pto.tensor_spec(rank=2, dtype=pto.f32),
+            O: pto.tensor_spec(rank=2, dtype=pto.f32),
+            *,
+            BLOCK_M: pto.constexpr = 64,
+            BLOCK_K: pto.constexpr = 64,
+            BLOCK_N: pto.constexpr = 64,
+        ):
+            pto.get_block_idx()
+
+
+        {SNIPPET_PLACEHOLDER}
+
+        A = np.random.randn(64, 32).astype(np.float32)
+        B = np.random.randn(32, 16).astype(np.float32)
+        O = gemm_wrapper(A, B, stream=None)
+        assert O.shape == (A.shape[0], B.shape[1])
+        assert len(PTODSL_DOC_LAUNCH_RECORDS) == 1
+        record = PTODSL_DOC_LAUNCH_RECORDS[0]
+        assert record.grid == 1
+        assert record.stream is None
+        assert len(record.args) == 3
+        assert record.args[0] is A
+        assert record.args[1] is B
+        assert record.args[2] is O
+        assert record.marshaled_arg_count == 15
         """
     ),
     "control_flow.basic_for": _fixture(
