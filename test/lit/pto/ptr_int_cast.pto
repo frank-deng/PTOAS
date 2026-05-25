@@ -24,12 +24,12 @@ module {
 }
 
 // IR-LABEL: func.func @ptr_int_cast_kernel
-// IR: pto.ptrtoint {{.*}} : memref<?xui64> -> i64
+// IR: pto.ptrtoint {{.*}} : memref<?xui64, #pto.address_space<gm>> -> i64
 // IR: arith.index_cast {{.*}} : index to i64
 // IR: arith.constant 8 : i64
 // IR: arith.muli {{.*}} : i64
 // IR: arith.addi {{.*}} : i64
-// IR: pto.inttoptr {{.*}} : i64 -> memref<?xui32>
+// IR: pto.inttoptr {{.*}} : i64 -> memref<?xui32, #pto.address_space<gm>>
 // IR-NOT: !pto.ptr
 
 // CPP-LABEL: AICORE void ptr_int_cast_kernel
@@ -40,8 +40,8 @@ module {
 // CPP: [[DST]][[[IDX]]] = [[VAL]];
 
 // IR-LABEL: func.func @ptrtoint_addptr_multi_consumer
-// IR: pto.load_scalar {{.*}} : memref<?xui64> -> ui64
-// IR: pto.ptrtoint {{.*}} : memref<?xui64> -> i64
+// IR: pto.load_scalar {{.*}} : memref<?xui64, #pto.address_space<gm>> -> ui64
+// IR: pto.ptrtoint {{.*}} : memref<?xui64, #pto.address_space<gm>> -> i64
 // IR: arith.index_cast {{.*}} : index to i64
 // IR: arith.constant 8 : i64
 // IR: arith.muli {{.*}} : i64
