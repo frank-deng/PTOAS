@@ -47,7 +47,6 @@ module {
 // CPP: [[DST0]][{{.*}}] =
 // CPP: pipe_barrier(PIPE_ALL);
 // CPP-NEXT: dcci([[DST0]], ENTIRE_DATA_CACHE, CACHELINE_OUT);
-// CPP-NEXT: dcci([[DST1]], ENTIRE_DATA_CACHE, CACHELINE_OUT);
 // CPP-NEXT: dsb((mem_dsb_t)0);
 // CPP-NEXT: #endif // __DAV_VEC__
 // CPP: return;

@@ -659,12 +659,12 @@ static void appendScalarGMFlush(std::string &out, llvm::StringRef indent,
     return;
   out.append(indent.str());
   out.append("pipe_barrier(PIPE_ALL);\n");
-  for (const std::string &ptr : ptrs) {
-    out.append(indent.str());
-    out.append("dcci(");
-    out.append(ptr);
-    out.append(", ENTIRE_DATA_CACHE, CACHELINE_OUT);\n");
-  }
+  out.append(indent.str());
+  // ENTIRE_DATA_CACHE flushes the full D-cache; one representative GM pointer
+  // is enough even when several scalar stores targeted different GM pointers.
+  out.append("dcci(");
+  out.append(ptrs.front());
+  out.append(", ENTIRE_DATA_CACHE, CACHELINE_OUT);\n");
   out.append(indent.str());
   out.append("dsb((mem_dsb_t)0);\n");
 }
