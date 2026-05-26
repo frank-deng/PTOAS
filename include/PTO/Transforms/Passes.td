@@ -338,7 +338,10 @@ def ExpandTileOp : Pass<"pto-expand-tile-op", "ModuleOp"> {
            "PYTHONPATH for tilelang_dsl package (added to env)">,
     Option<"pythonExe", "python-exe", "std::string",
            /*default=*/"\"python3\"",
-           "Python executable for tilelang DSL invocation">
+           "Python executable for tilelang DSL invocation">,
+    Option<"daemonSocketPath", "daemon-socket-path", "std::string",
+           /*default=*/"\"\"",
+           "Path to Unix domain socket for daemon RPC (if empty, uses subprocess)">
   ];
 }
 

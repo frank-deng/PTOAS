@@ -268,7 +268,7 @@ def _parse_operand_specs(spec_text: str) -> list[dict]:
             }
             raw_strides = raw.get("strides")
             if isinstance(raw_strides, list) and raw_strides:
-                # null entries represent dynamic strides — keep as None.
+                # null entries represent dynamic strides -- keep as None.
                 view_spec["strides"] = tuple(
                     None if s is None else int(s) for s in raw_strides
                 )

@@ -22,6 +22,7 @@ add_llvm_executable(pto-opt
   ptoas.cpp
   VPTOHostStubEmission.cpp
   VPTOFatobjEmission.cpp
+  TilelangDaemon.cpp
 )
 # =========================================================
 # [新增] 魔法操作：修改最终输出的文件名为 "ptoas"
