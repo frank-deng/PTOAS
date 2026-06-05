@@ -39,6 +39,12 @@ enum class PTOBackend {
   VPTO,
 };
 
+struct BackendInfo {
+  PTOBackend defaultBackend = PTOBackend::EmitC;
+  std::optional<PTOBackend> singleBackend;
+  bool requiresToolchain = false;
+};
+
 enum class PTOASCompileResultKind {
   Text,
   VPTOObject,
@@ -60,6 +66,9 @@ public:
   void setArch(std::string value);
   llvm::StringRef getArch() const;
 
+  void setBackendInfo(BackendInfo value);
+  const BackendInfo &getBackendInfo() const;
+
   int getArgc() const;
   char **getArgv() const;
 
@@ -77,6 +86,7 @@ private:
   MLIRContext mlirContext;
   std::string outputPath;
   std::string arch;
+  BackendInfo backendInfo;
   int argc = 0;
   char **argv = nullptr;
   std::optional<CANNToolchain> toolchain;

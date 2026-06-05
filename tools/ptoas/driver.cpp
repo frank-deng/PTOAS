@@ -30,6 +30,7 @@
 #include "llvm/Support/Regex.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "llvm/Support/raw_ostream.h"
 #include <cstring>
 #include <memory>
 #include <optional>
@@ -290,6 +291,14 @@ void mlir::pto::PTOASContext::setArch(std::string value) {
 }
 
 llvm::StringRef mlir::pto::PTOASContext::getArch() const { return arch; }
+
+void mlir::pto::PTOASContext::setBackendInfo(BackendInfo value) {
+  backendInfo = std::move(value);
+}
+
+const mlir::pto::BackendInfo &mlir::pto::PTOASContext::getBackendInfo() const {
+  return backendInfo;
+}
 
 int mlir::pto::PTOASContext::getArgc() const { return argc; }
 
@@ -621,12 +630,11 @@ static LogicalResult resolveSingleBackend(
   return success();
 }
 
-static LogicalResult runPTOASJobs(OwningOpRef<ModuleOp> &module,
-                                  bool cliBackendSpecified,
-                                  PTOASContext &context,
-                                  mlir::pto::PTOASCompileResult &result) {
-  mlir::pto::PTOBackend defaultBackend = mlir::pto::PTOBackend::EmitC;
-  if (!parseDriverBackend(mlir::pto::ptoBackend, defaultBackend)) {
+static LogicalResult buildBackendInfo(ModuleOp module, bool cliBackendSpecified,
+                                      mlir::pto::BackendInfo &backendInfo) {
+  backendInfo = mlir::pto::BackendInfo();
+  if (!parseDriverBackend(mlir::pto::ptoBackend,
+                          backendInfo.defaultBackend)) {
     llvm::errs() << "Error: invalid --pto-backend='" << mlir::pto::ptoBackend
                  << "'. Expected 'emitc' or 'vpto'.\n";
     return failure();
@@ -634,32 +642,21 @@ static LogicalResult runPTOASJobs(OwningOpRef<ModuleOp> &module,
 
   std::optional<mlir::pto::PTOBackend> moduleBackend;
   if (!cliBackendSpecified) {
-    if (failed(parseDriverBackendAttr(module->getOperation(), moduleBackend)))
+    if (failed(parseDriverBackendAttr(module.getOperation(), moduleBackend)))
       return failure();
   }
 
-  std::optional<mlir::pto::PTOBackend> singleBackend;
   if (failed(resolveSingleBackend(cliBackendSpecified, moduleBackend,
-                                  defaultBackend, module.get(), singleBackend)))
+                                  backendInfo.defaultBackend, module,
+                                  backendInfo.singleBackend)))
     return failure();
 
-  if (singleBackend) {
-    if (*singleBackend == mlir::pto::PTOBackend::EmitC) {
-      EmitCBackendJob singleJob(module, result);
-      return singleJob.run(context);
-    }
-    bool needsToolchain = !mlir::pto::emitMlirIR && !mlir::pto::emitVPTO;
-    if (failed(context.initializeEnvironment(needsToolchain, llvm::errs())))
-      return failure();
-    VPTOBackendJob singleJob(module, result);
-    return singleJob.run(context);
+  if (backendInfo.singleBackend) {
+    backendInfo.requiresToolchain =
+        *backendInfo.singleBackend == mlir::pto::PTOBackend::VPTO &&
+        !mlir::pto::emitMlirIR && !mlir::pto::emitVPTO;
+    return success();
   }
-
-  SmallVector<std::unique_ptr<BackendChildJob>, 4> backendJobs;
-  SmallVector<std::string, 4> fatobjPaths;
-  if (failed(collectChildJobs(module.get(), defaultBackend, context, fatobjPaths,
-                              backendJobs)))
-    return failure();
 
   if (mlir::pto::emitMlirIR || mlir::pto::emitVPTO ||
       mlir::pto::ptoPrintSeamIR || !mlir::pto::ptoSeamIRFile.empty()) {
@@ -667,18 +664,37 @@ static LogicalResult runPTOASJobs(OwningOpRef<ModuleOp> &module,
                     "debug IR output flags.\n";
     return failure();
   }
-  if (context.getOutputPath().empty() || context.getOutputPath() == "-") {
+  if (outputFilename.empty() || outputFilename == "-") {
     llvm::errs() << "Error: mixed pto.backend fatobj mode requires an "
                     "explicit file path passed with -o.\n";
     return failure();
   }
 
+  backendInfo.requiresToolchain = true;
+  return success();
+}
+
+static LogicalResult runPTOASJobs(OwningOpRef<ModuleOp> &module,
+                                  PTOASContext &context,
+                                  mlir::pto::PTOASCompileResult &result) {
+  const mlir::pto::BackendInfo &backendInfo = context.getBackendInfo();
+  if (backendInfo.singleBackend) {
+    if (*backendInfo.singleBackend == mlir::pto::PTOBackend::EmitC) {
+      EmitCBackendJob singleJob(module, result);
+      return singleJob.run(context);
+    }
+    VPTOBackendJob singleJob(module, result);
+    return singleJob.run(context);
+  }
+
+  SmallVector<std::unique_ptr<BackendChildJob>, 4> backendJobs;
+  SmallVector<std::string, 4> fatobjPaths;
+  if (failed(collectChildJobs(module.get(), backendInfo.defaultBackend,
+                              context, fatobjPaths, backendJobs)))
+    return failure();
+
   result.reset();
   result.kind = mlir::pto::PTOASCompileResultKind::MixedObject;
-
-  if (failed(context.initializeEnvironment(/*requiresToolchain=*/true,
-                                           llvm::errs())))
-    return failure();
 
   for (size_t i = 0, e = backendJobs.size(); i < e; ++i) {
     if (failed(backendJobs[i]->run(context)))
@@ -731,11 +747,12 @@ int main(int argc, char **argv) {
 
   llvm::cl::ParseCommandLineOptions(argc, argv, "PTO Assembler (ptoas)\n");
 
+  PTOASContext context(registry, outputFilename, argc, argv);
+  context.initializeMLIRContext();
+
   std::unique_ptr<llvm::MemoryBuffer> inputBuffer = readInputBuffer();
   if (!inputBuffer)
     return 1;
-  PTOASContext context(registry, outputFilename, argc, argv);
-  context.initializeMLIRContext();
 
   std::string arch;
   OwningOpRef<ModuleOp> module = loadInputModule(
@@ -744,8 +761,16 @@ int main(int argc, char **argv) {
     return 1;
   context.setArch(std::move(arch));
 
+  mlir::pto::BackendInfo backendInfo;
+  if (failed(buildBackendInfo(module.get(), cliBackendSpecified, backendInfo)))
+    return 1;
+  context.setBackendInfo(std::move(backendInfo));
+  if (failed(context.initializeEnvironment(
+          context.getBackendInfo().requiresToolchain, llvm::errs())))
+    return 1;
+
   mlir::pto::PTOASCompileResult result;
-  if (failed(runPTOASJobs(module, cliBackendSpecified, context, result)))
+  if (failed(runPTOASJobs(module, context, result)))
     return 1;
 
   if (result.kind == mlir::pto::PTOASCompileResultKind::Text)
