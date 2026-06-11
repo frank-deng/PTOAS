@@ -119,6 +119,7 @@ void mlir::pto::registerPTOASPassesAndCLOptions() {
   mlir::pto::registerPTOInlineLibCall();
   mlir::pto::registerFoldTileBufIntrinsics();
   mlir::pto::registerExpandTileOp();
+  mlir::pto::registerLowerPTOToUBufOps();
   mlir::registerPassManagerCLOptions();
 }
 
@@ -1551,8 +1552,14 @@ static void lowerPTOToVPTOBackend(PassManager &pm, ModuleOp module, int argc,
   auto &kernelModulePM = pm.nest<ModuleOp>();
   auto moduleArchAttr =
       module->getAttrOfType<mlir::StringAttr>("pto.target_arch");
+  const bool isA3 = moduleArchAttr && moduleArchAttr.getValue() == "a3";
   const bool enableA5VPTOPostLoweringFusionLifecycle =
       enableOpFusion && moduleArchAttr && moduleArchAttr.getValue() == "a5";
+
+  kernelModulePM.addNestedPass<mlir::func::FuncOp>(
+      pto::createLowerPTOToUBufOpsPass());
+  if (isA3)
+    return;
 
   pto::ExpandTileOpOptions expandOpts = resolveExpandTileOpOptions(argc, argv);
   kernelModulePM.addPass(pto::createExpandTileOpPass(expandOpts));
@@ -1584,6 +1591,10 @@ buildVPTOEmissionOptions(const pto::CANNVersion &cannVersion) {
   options.dumpVPTOIR = false;
   options.targetTriple = "hiipu64-hisilicon-cce";
   options.cannVersion = cannVersion;
+  std::string arch = ptoTargetArch;
+  for (char &c : arch)
+    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  options.march = (arch == "a3") ? "dav-c220-vec" : "dav-c310-vec";
   return options;
 }
 
@@ -1831,42 +1842,46 @@ int mlir::pto::compilePTOASModule(
   pm.addNestedPass<mlir::func::FuncOp>(pto::createLoweringSyncToPipePass());
   if (!disableInferLayout)
     pm.addNestedPass<mlir::func::FuncOp>(pto::createInferPTOLayoutPass());
-  pm.addNestedPass<mlir::func::FuncOp>(pto::createPTOA5NormalizeTMovPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      pto::createPTOValidateIntToPtrUsesPass());
-
-  // Keep frontend fusion on tile-native PTO IR and annotate last_use directly
-  // on scheduled block-local spans before the shared mainline lowers tiles.
-  // The shape-inference switch drives FusionPlan only: that is where the
-  // iteration-domain decisions (static vs ShapeConstraintSolver) are made.
-  // FusionRegionGen consumes only the shared pre-fusion dataflow graph (cached
-  // by the analysis manager and built once by FusionPlan) plus the resulting
-  // pto.fusion.group_id/order metadata; it never consults the domain classes,
-  // so it takes no option here.
-  pto::FusionPlanOptions fusionPlanOpts;
-  fusionPlanOpts.enableShapeInference = enableShapeInference;
-  if (enableA5EmitCFusionPath) {
+  // A5-only: normalize movs, lower to memref, plan memory.
+  // A3 uses the LowerPTOToUBufOps path instead (pointer-based, no memref).
+  if (ptoTargetArch != "a3") {
+    pm.addNestedPass<mlir::func::FuncOp>(pto::createPTOA5NormalizeTMovPass());
     pm.addNestedPass<mlir::func::FuncOp>(
-        pto::createFusionPlanPass(fusionPlanOpts));
-    pm.addNestedPass<mlir::func::FuncOp>(pto::createOpSchedulingPass());
-    pm.addNestedPass<mlir::func::FuncOp>(pto::createPTOMarkLastUsePass());
-  } else if (enableA5VPTOFusionPath) {
-    pm.addNestedPass<mlir::func::FuncOp>(
-        pto::createFusionPlanPass(fusionPlanOpts));
-    pm.addNestedPass<mlir::func::FuncOp>(pto::createOpSchedulingPass());
-    pm.addNestedPass<mlir::func::FuncOp>(pto::createPTOFusionRegionGenPass());
-  }
+        pto::createPTOValidateIntToPtrUsesPass());
 
-  pm.addPass(pto::createPTOViewToMemrefPass());
+    // Keep frontend fusion on tile-native PTO IR and annotate last_use directly
+    // on scheduled block-local spans before the shared mainline lowers tiles.
+    // The shape-inference switch drives FusionPlan only: that is where the
+    // iteration-domain decisions (static vs ShapeConstraintSolver) are made.
+    // FusionRegionGen consumes only the shared pre-fusion dataflow graph (cached
+    // by the analysis manager and built once by FusionPlan) plus the resulting
+    // pto.fusion.group_id/order metadata; it never consults the domain classes,
+    // so it takes no option here.
+    pto::FusionPlanOptions fusionPlanOpts;
+    fusionPlanOpts.enableShapeInference = enableShapeInference;
+    if (enableA5EmitCFusionPath) {
+      pm.addNestedPass<mlir::func::FuncOp>(
+          pto::createFusionPlanPass(fusionPlanOpts));
+      pm.addNestedPass<mlir::func::FuncOp>(pto::createOpSchedulingPass());
+      pm.addNestedPass<mlir::func::FuncOp>(pto::createPTOMarkLastUsePass());
+    } else if (enableA5VPTOFusionPath) {
+      pm.addNestedPass<mlir::func::FuncOp>(
+          pto::createFusionPlanPass(fusionPlanOpts));
+      pm.addNestedPass<mlir::func::FuncOp>(pto::createOpSchedulingPass());
+      pm.addNestedPass<mlir::func::FuncOp>(pto::createPTOFusionRegionGenPass());
+    }
 
-  if (effectiveLevel != PTOBuildLevel::Level3) {
-    PlanMemoryOptions planMemoryOption;
-    planMemoryOption.memMode = MemPlanMode::LOCAL_MEM_PLAN;
-    planMemoryOption.enableGlobalReuse = false;
-    planMemoryOption.enablePrintMemoryAllocatedSize = false;
-    pm.addPass(pto::createPlanMemoryPass(planMemoryOption));
+    pm.addPass(pto::createPTOViewToMemrefPass());
+
+    if (effectiveLevel != PTOBuildLevel::Level3) {
+      PlanMemoryOptions planMemoryOption;
+      planMemoryOption.memMode = MemPlanMode::LOCAL_MEM_PLAN;
+      planMemoryOption.enableGlobalReuse = false;
+      planMemoryOption.enablePrintMemoryAllocatedSize = false;
+      pm.addPass(pto::createPlanMemoryPass(planMemoryOption));
+    }
+    pm.addPass(pto::createPTOResolveReservedBuffersPass());
   }
-  pm.addPass(pto::createPTOResolveReservedBuffersPass());
 
   // Conditionally add one automatic synchronization mode. Barrier-all is a
   // conservative standalone pass; InsertSync and GraphSyncSolver are set/wait
