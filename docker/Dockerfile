@@ -11,7 +11,7 @@ ARG ARCH
 # NOTE: change $PY_VER for different Python versions (3.8 - 3.14 available)
 ARG PY_VER=cp311-cp311
 ARG LLVM_REF=feature-vpto-llvm21
-ARG LLVM_REPO=https://github.com/TaoTao-real/llvm-project.git
+ARG LLVM_REPO=https://github.com/vpto-dev/llvm-project.git
 
 ## -- usually no need to change below --
 

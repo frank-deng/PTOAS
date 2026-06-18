@@ -81,7 +81,7 @@
 ### 3.1 构建 LLVM/MLIR
 
 ```bash
-git clone https://github.com/TaoTao-real/llvm-project.git
+git clone https://github.com/vpto-dev/llvm-project.git
 cd llvm-project
 git checkout feature-vpto-llvm21
 

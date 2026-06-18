@@ -2,7 +2,7 @@
 
 ## 1. 项目简介 (Introduction)
 
-**ptoas** (`ptoas`) 是一个基于 **LLVM/MLIR LLVM21 VPTO 分支 (`TaoTao-real/llvm-project:feature-vpto-llvm21`)** 框架构建的专用编译器工具链，专为 **PTO Bytecode** (Programming Tiling Operator Bytecode) 设计。
+**ptoas** (`ptoas`) 是一个基于 **LLVM/MLIR LLVM21 VPTO 分支 (`vpto-dev/llvm-project:feature-vpto-llvm21`)** 框架构建的专用编译器工具链，专为 **PTO Bytecode** (Programming Tiling Operator Bytecode) 设计。
 
 作为连接上层 AI 框架与底层各类NPU/GPGPU/CPU硬件，`ptoas` 采用 **Out-of-Tree** 架构构建，提供了完整的 C++ 与 Python 接口，主要职责包括：
 
@@ -37,7 +37,7 @@ PTOAS/
 
 ## 3. 构建指南 (Build Instructions)
 
-⚠️ **重要提示**：本项目严格依赖 **LLVM21 VPTO 分支 `TaoTao-real/llvm-project:feature-vpto-llvm21`**。
+⚠️ **重要提示**：本项目严格依赖 **LLVM21 VPTO 分支 `vpto-dev/llvm-project:feature-vpto-llvm21`**。
 
 
 ### 3.0 环境变量配置 (Configuration)
@@ -89,7 +89,7 @@ python3 -m pip install 'pybind11<3' nanobind numpy
 ```bash
 # 1. 下载 LLVM 源码
 cd $WORKSPACE_DIR
-git clone https://github.com/TaoTao-real/llvm-project.git
+git clone https://github.com/vpto-dev/llvm-project.git
 cd $LLVM_SOURCE_DIR
 
 # 2. [关键] 切换到 VPTO 适配分支

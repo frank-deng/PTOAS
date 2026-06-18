@@ -2,7 +2,7 @@
 
 ## 1. Introduction
 
-**ptoas** is a specialized compiler toolchain built on top of the **LLVM21 VPTO branch (`TaoTao-real/llvm-project:feature-vpto-llvm21`)**, designed specifically for **PTO Bytecode** (Programming Tiling Operator Bytecode).
+**ptoas** is a specialized compiler toolchain built on top of the **LLVM21 VPTO branch (`vpto-dev/llvm-project:feature-vpto-llvm21`)**, designed specifically for **PTO Bytecode** (Programming Tiling Operator Bytecode).
 
 Acting as the bridge between upper-level AI frameworks and underlying NPU/GPGPU/CPU hardware, `ptoas` is built in an **Out-of-Tree** architecture and provides complete C++ and Python interfaces. Its primary responsibilities include:
 
@@ -36,7 +36,7 @@ PTOAS/
 
 ## 3. Build Instructions
 
-⚠️ **Important**: This project strictly requires the **LLVM21 VPTO branch `TaoTao-real/llvm-project:feature-vpto-llvm21`**.
+⚠️ **Important**: This project strictly requires the **LLVM21 VPTO branch `vpto-dev/llvm-project:feature-vpto-llvm21`**.
 
 ### 3.0 Environment Variable Configuration
 
@@ -84,7 +84,7 @@ Download the VPTO-adapted LLVM source, check out the `feature-vpto-llvm21` branc
 ```bash
 # 1. Clone LLVM
 cd $WORKSPACE_DIR
-git clone https://github.com/TaoTao-real/llvm-project.git
+git clone https://github.com/vpto-dev/llvm-project.git
 cd $LLVM_SOURCE_DIR
 
 # 2. [Critical] Check out the VPTO adaptation branch
