@@ -4964,11 +4964,7 @@ static LogicalResult verifyMatmulTypeTriple(Operation *op, Type lhsElemTy,
     return success();
 
   auto isA5TMatmulFp8Type = [](Type ty) {
-    if (auto ft = mlir::dyn_cast<FloatType>(ty))
-      return ft.isFloat8E4M3() || ft.isFloat8E4M3FN() ||
-             ft.isFloat8E4M3FNUZ() || ft.isFloat8E4M3B11FNUZ() ||
-             ft.isFloat8E5M2() || ft.isFloat8E5M2FNUZ();
-    return false;
+    return isPTOFloat8Type(ty);
   };
   if (isA5 && dstElemTy.isF32()) {
     if (isA5TMatmulFp8Type(lhsElemTy) && isA5TMatmulFp8Type(rhsElemTy))
