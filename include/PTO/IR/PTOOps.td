@@ -5392,6 +5392,52 @@ def TQuantOp : PTO_TOp<"tquant", [
     ::mlir::MutableOperandRange getDpsInitsMutable() { return getDstMutable(); }
   }];
 }
+
+def TQuantMxOp : PTO_TOp<"tquant.mx", [
+  PTO_DpsInitOpInterface,
+  OpPipeInterface,
+  DeclareOpInterfaceMethods<MemoryEffectsOpInterface>
+]> {
+  let summary = "TQUANT MX: Quantize a vec tile into MXFP8/MXFP4 and materialize exp/max/scaling tiles.";
+
+  let description = [{
+    A5-only MX quantization form. Quantizes `src` into `dst` and additionally
+    materializes the auxiliary `exp`, `max`, and `scaling` tiles required by
+    PTO-ISA MX quantization.
+
+    DPS form:
+      pto.tquant.mx ins(%src : <src_type>)
+                    outs(%dst, %exp, %max, %scaling : <dst_type>, <exp_type>, <max_type>, <scaling_type>)
+                    {quant_type = #pto<quant_type MXFP8>}
+  }];
+
+  let arguments = (ins
+    PTODpsType:$src,
+    PTODpsType:$dst,
+    PTODpsType:$exp,
+    PTODpsType:$max,
+    PTODpsType:$scaling,
+    PTO_QuantTypeAttr:$quant_type
+  );
+
+  let results = (outs);
+
+  let hasVerifier = 1;
+
+  let assemblyFormat = [{
+    `ins` `(` $src `:` qualified(type($src)) `)`
+    `outs` `(` $dst `,` $exp `,` $max `,` $scaling `:` qualified(type($dst)) `,`
+                  qualified(type($exp)) `,` qualified(type($max)) `,` qualified(type($scaling)) `)`
+    attr-dict
+  }];
+
+  let extraClassDeclaration = [{
+    ::mlir::pto::PIPE getPipe() { return ::mlir::pto::PIPE::PIPE_V; }
+    ::mlir::MutableOperandRange getDpsInitsMutable() {
+      return ::mlir::MutableOperandRange(getOperation(), 1, 4);
+    }
+  }];
+}
 //===----------------------------------------------------------------------===//
 // TDequantOp
 //===----------------------------------------------------------------------===//

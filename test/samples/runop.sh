@@ -20,7 +20,7 @@ PTOAS_OUT_DIR="${PTOAS_OUT_DIR:-}"
 PTO_BUILD_DIR="${PTO_BUILD_DIR:-}"
 PTOAS_ENABLE_INSERT_SYNC="${PTOAS_ENABLE_INSERT_SYNC:-1}"
 PTOAS_FLAGS="${PTOAS_FLAGS:-}"
-PTO_PTO_DIRS="${PTO_PTO_DIRS:-Sync Qwen3DecodeA3 Qwen3DecodeA5 DeepseekV4DecodeA3 DeepseekV4DecodeA5 CommSync Prelu Rem Rems Gemvmx MatmulMxLowPrecision}"
+PTO_PTO_DIRS="${PTO_PTO_DIRS:-Sync Qwen3DecodeA3 Qwen3DecodeA5 DeepseekV4DecodeA3 DeepseekV4DecodeA5 CommSync Prelu Rem Rems Gemvmx MatmulMxLowPrecision TquantMx}"
 ENABLE_BC=0
 
 usage() {
@@ -38,7 +38,7 @@ Env:
   PTO_BUILD_DIR  # build directory root that contains tools/ptoas and tools/ptobc (optional)
   PTOAS_FLAGS  # extra flags passed to ptoas (e.g. --enable-insert-sync)
   PTOAS_ENABLE_INSERT_SYNC  # 1 to append --enable-insert-sync to PTOAS_FLAGS (default: 1)
-  PTO_PTO_DIRS  # space-separated dirs to run .pto directly (default: Sync Qwen3DecodeA3 Qwen3DecodeA5 DeepseekV4DecodeA3 DeepseekV4DecodeA5 CommSync Prelu Rem Rems)
+  PTO_PTO_DIRS  # space-separated dirs to run .pto directly (default: Sync Qwen3DecodeA3 Qwen3DecodeA5 DeepseekV4DecodeA3 DeepseekV4DecodeA5 CommSync Prelu Rem Rems Gemvmx MatmulMxLowPrecision TquantMx)
 
 Flags:
   --enablebc  # enable: python -> .pto -> ptobc -> .pto -> ptoas
@@ -1338,6 +1338,10 @@ PY
       decoded_pto="${out_subdir}/${base}-roundtrip.pto"
       cpp="${out_subdir}/${base}.cpp"
       if [[ "$A" == "Qwen3DecodeA3" || "$A" == "Qwen3DecodeA5" || "$A" == "DeepseekV4DecodeA3" || "$A" == "DeepseekV4DecodeA5" ]]; then
+        cpp="${out_subdir}/${base}-pto.cpp"
+      elif [[ "$base" == "tquant_mx" ]]; then
+        # Board validation currently discovers generated sample kernels via
+        # the historical `*-pto.cpp` naming convention.
         cpp="${out_subdir}/${base}-pto.cpp"
       fi
       local sample_use_ptobc_roundtrip="$use_ptobc_roundtrip"
