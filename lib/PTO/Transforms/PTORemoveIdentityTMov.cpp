@@ -41,28 +41,75 @@ struct AddressToken {
   std::optional<int64_t> constant;
 };
 
-static std::optional<int64_t> tryEvalI64Constant(Value value) {
+static std::optional<unsigned> getIntegerLikeBitWidth(Type type) {
+  if (auto intTy = dyn_cast<IntegerType>(type))
+    return intTy.getWidth();
+  if (isa<IndexType>(type))
+    return 64;
+  return std::nullopt;
+}
+
+static std::optional<APInt> tryEvalIntegerLikeConstant(Value value);
+
+static std::optional<APInt> evalSignedCast(Value input, Type resultType) {
+  std::optional<APInt> inputValue = tryEvalIntegerLikeConstant(input);
+  std::optional<unsigned> resultWidth = getIntegerLikeBitWidth(resultType);
+  if (!inputValue || !resultWidth)
+    return std::nullopt;
+  return inputValue->sextOrTrunc(*resultWidth);
+}
+
+static std::optional<APInt> evalUnsignedCast(Value input, Type resultType) {
+  std::optional<APInt> inputValue = tryEvalIntegerLikeConstant(input);
+  std::optional<unsigned> resultWidth = getIntegerLikeBitWidth(resultType);
+  if (!inputValue || !resultWidth)
+    return std::nullopt;
+  return inputValue->zextOrTrunc(*resultWidth);
+}
+
+static std::optional<APInt> evalTruncCast(Value input, Type resultType) {
+  std::optional<APInt> inputValue = tryEvalIntegerLikeConstant(input);
+  std::optional<unsigned> resultWidth = getIntegerLikeBitWidth(resultType);
+  if (!inputValue || !resultWidth || *resultWidth > inputValue->getBitWidth())
+    return std::nullopt;
+  return inputValue->trunc(*resultWidth);
+}
+
+static std::optional<APInt> tryEvalIntegerLikeConstant(Value value) {
   if (!value)
     return std::nullopt;
 
   APInt apInt;
-  if (matchPattern(value, m_ConstantInt(&apInt)))
-    return apInt.getSExtValue();
+  if (matchPattern(value, m_ConstantInt(&apInt))) {
+    std::optional<unsigned> width = getIntegerLikeBitWidth(value.getType());
+    if (!width)
+      return std::nullopt;
+    return apInt.sextOrTrunc(*width);
+  }
 
   Operation *defOp = value.getDefiningOp();
   if (!defOp)
     return std::nullopt;
 
   if (auto castOp = dyn_cast<arith::IndexCastOp>(defOp))
-    return tryEvalI64Constant(castOp.getIn());
+    return evalSignedCast(castOp.getIn(), castOp.getType());
+  if (auto castOp = dyn_cast<arith::IndexCastUIOp>(defOp))
+    return evalUnsignedCast(castOp.getIn(), castOp.getType());
   if (auto castOp = dyn_cast<arith::ExtSIOp>(defOp))
-    return tryEvalI64Constant(castOp.getIn());
+    return evalSignedCast(castOp.getIn(), castOp.getType());
   if (auto castOp = dyn_cast<arith::ExtUIOp>(defOp))
-    return tryEvalI64Constant(castOp.getIn());
+    return evalUnsignedCast(castOp.getIn(), castOp.getType());
   if (auto castOp = dyn_cast<arith::TruncIOp>(defOp))
-    return tryEvalI64Constant(castOp.getIn());
+    return evalTruncCast(castOp.getIn(), castOp.getType());
 
   return std::nullopt;
+}
+
+static std::optional<int64_t> tryEvalI64Constant(Value value) {
+  std::optional<APInt> apInt = tryEvalIntegerLikeConstant(value);
+  if (!apInt || apInt->getBitWidth() > 64)
+    return std::nullopt;
+  return apInt->getSExtValue();
 }
 
 static Value peelMetadata(Value value) {

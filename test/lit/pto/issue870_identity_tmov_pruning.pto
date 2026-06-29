@@ -43,6 +43,34 @@ module attributes {pto.target_arch = "a2a3", pto.kernel_kind = #pto.kernel_kind<
     return
   }
 
+  func.func @non_identity_tmov_extui_negative_addr() {
+    %cm1_i8 = arith.constant -1 : i8
+    %c255_i64 = arith.extui %cm1_i8 : i8 to i64
+    %cm1_i64 = arith.constant -1 : i64
+    %src = pto.alloc_tile addr = %c255_i64
+      : !pto.tile_buf<loc=vec, dtype=f32, rows=1, cols=16, v_row=1, v_col=16, blayout=row_major, slayout=none_box, fractal=512, pad=0>
+    %dst = pto.alloc_tile addr = %cm1_i64
+      : !pto.tile_buf<loc=vec, dtype=f32, rows=1, cols=16, v_row=1, v_col=16, blayout=row_major, slayout=none_box, fractal=512, pad=0>
+    pto.tmov ins(%src
+      : !pto.tile_buf<loc=vec, dtype=f32, rows=1, cols=16, v_row=1, v_col=16, blayout=row_major, slayout=none_box, fractal=512, pad=0>)
+      outs(%dst : !pto.tile_buf<loc=vec, dtype=f32, rows=1, cols=16, v_row=1, v_col=16, blayout=row_major, slayout=none_box, fractal=512, pad=0>)
+    return
+  }
+
+  func.func @non_identity_tmov_trunc_then_extsi_addr() {
+    %c255_i64 = arith.constant 255 : i64
+    %trunc_i8 = arith.trunci %c255_i64 : i64 to i8
+    %cm1_i64 = arith.extsi %trunc_i8 : i8 to i64
+    %src = pto.alloc_tile addr = %cm1_i64
+      : !pto.tile_buf<loc=vec, dtype=f32, rows=1, cols=16, v_row=1, v_col=16, blayout=row_major, slayout=none_box, fractal=512, pad=0>
+    %dst = pto.alloc_tile addr = %c255_i64
+      : !pto.tile_buf<loc=vec, dtype=f32, rows=1, cols=16, v_row=1, v_col=16, blayout=row_major, slayout=none_box, fractal=512, pad=0>
+    pto.tmov ins(%src
+      : !pto.tile_buf<loc=vec, dtype=f32, rows=1, cols=16, v_row=1, v_col=16, blayout=row_major, slayout=none_box, fractal=512, pad=0>)
+      outs(%dst : !pto.tile_buf<loc=vec, dtype=f32, rows=1, cols=16, v_row=1, v_col=16, blayout=row_major, slayout=none_box, fractal=512, pad=0>)
+    return
+  }
+
   func.func @non_identity_tmov_dynamic_addr(%addr0: i64, %addr1: i64) {
     %src = pto.pointer_cast(%addr0) : memref<1x16xf32, #pto.address_space<vec>>
     %dst = pto.pointer_cast(%addr1) : memref<1x16xf32, #pto.address_space<vec>>
@@ -63,6 +91,12 @@ module attributes {pto.target_arch = "a2a3", pto.kernel_kind = #pto.kernel_kind<
 // IR-NOT: pto.tmov
 // IR: return
 
+// IR-LABEL: func.func @non_identity_tmov_extui_negative_addr
+// IR: pto.tmov
+
+// IR-LABEL: func.func @non_identity_tmov_trunc_then_extsi_addr
+// IR: pto.tmov
+
 // IR-LABEL: func.func @non_identity_tmov_dynamic_addr
 // IR: pto.tmov
 
@@ -78,6 +112,12 @@ module attributes {pto.target_arch = "a2a3", pto.kernel_kind = #pto.kernel_kind<
 // CPP-NOT: pipe_barrier(PIPE_V)
 // CPP-NOT: TMOV(
 // CPP: return;
+
+// CPP-LABEL: AICORE void non_identity_tmov_extui_negative_addr
+// CPP: TMOV(
+
+// CPP-LABEL: AICORE void non_identity_tmov_trunc_then_extsi_addr
+// CPP: TMOV(
 
 // CPP-LABEL: AICORE void non_identity_tmov_dynamic_addr
 // CPP: TMOV(
