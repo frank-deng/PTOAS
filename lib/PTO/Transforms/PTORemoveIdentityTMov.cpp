@@ -10,6 +10,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "PTO/IR/PTO.h"
+#include "PTO/IR/PTOTypeUtils.h"
 #include "PTO/Transforms/InsertSync/MemoryDependentAnalyzer.h"
 #include "PTO/Transforms/InsertSync/PTOIRTranslator.h"
 #include "PTO/Transforms/InsertSync/SyncCommon.h"
@@ -214,6 +215,26 @@ static bool hasCompatibleIdentityTypes(TMovOp op) {
   return true;
 }
 
+static bool hasLowPrecisionElement(Value value) {
+  if (auto tileTy = dyn_cast<TileBufType>(value.getType()))
+    return isPTOLowPrecisionType(tileTy.getElementType());
+  if (auto memrefTy = dyn_cast<MemRefType>(value.getType()))
+    return isPTOLowPrecisionType(memrefTy.getElementType());
+  return false;
+}
+
+static bool touchesLowPrecisionElement(TMovOp op) {
+  if (hasLowPrecisionElement(op.getSrc()) || hasLowPrecisionElement(op.getDst()))
+    return true;
+  return llvm::any_of(op->getResults(), [](OpResult result) {
+    if (auto tileTy = dyn_cast<TileBufType>(result.getType()))
+      return isPTOLowPrecisionType(tileTy.getElementType());
+    if (auto memrefTy = dyn_cast<MemRefType>(result.getType()))
+      return isPTOLowPrecisionType(memrefTy.getElementType());
+    return false;
+  });
+}
+
 static bool isIdentityTMovByExplicitAddress(TMovOp op) {
   if (op.getSrc() == op.getDst())
     return true;
@@ -255,7 +276,8 @@ struct PTORemoveIdentityTMovPass
     SmallVector<TMovOp, 16> memInfoCandidates;
 
     func.walk([&](TMovOp op) {
-      if (!hasPlainTMovSemantics(op) || !hasCompatibleIdentityTypes(op))
+      if (!hasPlainTMovSemantics(op) || !hasCompatibleIdentityTypes(op) ||
+          touchesLowPrecisionElement(op))
         return;
       if (isIdentityTMovByExplicitAddress(op)) {
         identityMoves.push_back(op);
