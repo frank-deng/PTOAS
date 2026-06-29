@@ -30,6 +30,7 @@ add_mlir_dialect_library(PTOTransforms
   VPTOLLVMEmitterHelper.cpp
   VPTOPtrNormalize.cpp
   VPTOPtrCastCleanup.cpp
+  VPTONormalizeEquivalentVcvt.cpp
   VPTOExpandWrapperOps.cpp
   VPTOSoftPostUpdate.cpp
   PTOVPTOPtrBoundary.cpp
