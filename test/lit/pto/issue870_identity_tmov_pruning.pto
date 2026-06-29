@@ -1,7 +1,5 @@
-// RUN: ptoas --pto-arch=a3 --pto-level=level3 --emit-pto-ir --mlir-print-ir-after=pto-remove-identity-tmov %s -o /dev/null 2>&1 | FileCheck %s --check-prefix=IR-ID
-// RUN: ptoas --pto-arch=a3 --pto-level=level3 --emit-pto-ir --mlir-print-ir-after=pto-remove-identity-tmov %s -o /dev/null 2>&1 | FileCheck %s --check-prefix=IR-KEEP
-// RUN: ptoas --pto-arch=a3 --pto-level=level3 --enable-insert-sync %s -o - 2>&1 | FileCheck %s --check-prefix=CPP-ID
-// RUN: ptoas --pto-arch=a3 --pto-level=level3 --enable-insert-sync %s -o - 2>&1 | FileCheck %s --check-prefix=CPP-KEEP
+// RUN: ptoas --pto-arch=a3 --pto-level=level3 --emit-pto-ir --mlir-print-ir-after=pto-remove-identity-tmov %s -o /dev/null 2>&1 | FileCheck %s --check-prefix=IR
+// RUN: ptoas --pto-arch=a3 --pto-level=level3 --enable-insert-sync %s -o - 2>&1 | FileCheck %s --check-prefix=CPP
 
 module attributes {pto.target_arch = "a2a3", pto.kernel_kind = #pto.kernel_kind<vector>} {
   func.func @identity_tmov_same_addr() {
@@ -33,19 +31,53 @@ module attributes {pto.target_arch = "a2a3", pto.kernel_kind = #pto.kernel_kind<
       outs(%dst : !pto.tile_buf<loc=vec, dtype=f32, rows=1, cols=16, v_row=1, v_col=16, blayout=row_major, slayout=none_box, fractal=512, pad=0>)
     return
   }
+
+  func.func @identity_tmov_pointer_cast_same_addr_index_cast() {
+    %c0_i64 = arith.constant 0 : i64
+    %c0_idx = arith.constant 0 : index
+    %c0_alt = arith.index_cast %c0_idx : index to i64
+    %src = pto.pointer_cast(%c0_i64) : memref<1x16xf32, #pto.address_space<vec>>
+    %dst = pto.pointer_cast(%c0_alt) : memref<1x16xf32, #pto.address_space<vec>>
+    pto.tmov ins(%src : memref<1x16xf32, #pto.address_space<vec>>)
+      outs(%dst : memref<1x16xf32, #pto.address_space<vec>>)
+    return
+  }
+
+  func.func @non_identity_tmov_dynamic_addr(%addr0: i64, %addr1: i64) {
+    %src = pto.pointer_cast(%addr0) : memref<1x16xf32, #pto.address_space<vec>>
+    %dst = pto.pointer_cast(%addr1) : memref<1x16xf32, #pto.address_space<vec>>
+    pto.tmov ins(%src : memref<1x16xf32, #pto.address_space<vec>>)
+      outs(%dst : memref<1x16xf32, #pto.address_space<vec>>)
+    return
+  }
 }
 
-// IR-ID-LABEL: func.func @identity_tmov_same_addr
-// IR-ID-NOT: pto.tmov
-// IR-ID: return
+// IR-LABEL: func.func @identity_tmov_same_addr
+// IR-NOT: pto.tmov
+// IR: return
 
-// IR-KEEP-LABEL: func.func @non_identity_tmov_different_addr
-// IR-KEEP: pto.tmov
+// IR-LABEL: func.func @non_identity_tmov_different_addr
+// IR: pto.tmov
 
-// CPP-ID-LABEL: AICORE void identity_tmov_same_addr
-// CPP-ID-NOT: pipe_barrier(PIPE_V)
-// CPP-ID-NOT: TMOV(
-// CPP-ID: return;
+// IR-LABEL: func.func @identity_tmov_pointer_cast_same_addr_index_cast
+// IR-NOT: pto.tmov
+// IR: return
 
-// CPP-KEEP-LABEL: AICORE void non_identity_tmov_different_addr
-// CPP-KEEP: TMOV(
+// IR-LABEL: func.func @non_identity_tmov_dynamic_addr
+// IR: pto.tmov
+
+// CPP-LABEL: AICORE void identity_tmov_same_addr
+// CPP-NOT: pipe_barrier(PIPE_V)
+// CPP-NOT: TMOV(
+// CPP: return;
+
+// CPP-LABEL: AICORE void non_identity_tmov_different_addr
+// CPP: TMOV(
+
+// CPP-LABEL: AICORE void identity_tmov_pointer_cast_same_addr_index_cast
+// CPP-NOT: pipe_barrier(PIPE_V)
+// CPP-NOT: TMOV(
+// CPP: return;
+
+// CPP-LABEL: AICORE void non_identity_tmov_dynamic_addr
+// CPP: TMOV(

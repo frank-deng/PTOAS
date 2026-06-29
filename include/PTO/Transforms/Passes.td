@@ -151,9 +151,12 @@ def PTORemoveIdentityTMov : Pass<"pto-remove-identity-tmov", "func::FuncOp"> {
   let summary = "Remove plain PTO TMOV operations that copy a tile onto itself";
   let description = [{
     Removes side-effect-free `pto.tmov` operations whose source and destination
-    are proven to refer to the same physical tile address. This pass runs before
-    InsertSync so deleting the identity TMOV also prevents synchronization from
-    being generated only for that no-op copy.
+    are proven to refer to the same physical tile address/range. The proof is
+    conservative: first check explicit address tokens (`tassign` /
+    `pointer_cast`), then fall back to InsertSync's `BaseMemInfo` exact-range
+    analysis for statically addressable values. This pass runs before InsertSync
+    so deleting the identity TMOV also prevents synchronization from being
+    generated only for that no-op copy.
   }];
   let constructor = "mlir::pto::createPTORemoveIdentityTMovPass()";
   let dependentDialects = [
