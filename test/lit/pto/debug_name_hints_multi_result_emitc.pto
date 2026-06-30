@@ -6,26 +6,44 @@
 // RUN: ptoas %s 2>&1 | FileCheck %s
 
 // Multi-result textual SSA names use the `%name:N =` MLIR syntax. The textual
-// hint parser must still consume that op so later result-name hints do not
-// shift onto the wrong operations.
+// hint parser must still consume that op so later op-result hints do not shift
+// onto the wrong operations.
 
 module {
-  func.func @multi_result_hint_alignment(%pred: i1) -> i32 {
-    %c0 = arith.constant 0 : i32
-    %c1 = arith.constant 1 : i32
+  func.func @multi_result_hint_alignment(%pred: i1, %lhs: i32, %rhs: i32) -> i32 {
     %pair:2 = scf.if %pred -> (i32, i32) {
-      scf.yield %c0, %c1 : i32, i32
+      scf.yield %lhs, %rhs : i32, i32
     } else {
-      scf.yield %c1, %c0 : i32, i32
+      scf.yield %rhs, %lhs : i32, i32
     }
-    %sum = arith.addi %pair#0, %pair#1 : i32
-    %scaled = arith.muli %sum, %c1 : i32
-    return %scaled : i32
+    %sum = func.call @add_helper(%pair#0, %pair#1) : (i32, i32) -> i32
+    cf.cond_br %pred, ^bb1, ^bb2
+
+  ^bb1:
+    %scaled = func.call @mul_helper(%sum, %pair#0) : (i32, i32) -> i32
+    cf.br ^bb3(%scaled : i32)
+
+  ^bb2:
+    %scaled_else = func.call @mul_helper(%sum, %pair#1) : (i32, i32) -> i32
+    cf.br ^bb3(%scaled_else : i32)
+
+  ^bb3(%merged: i32):
+    %ret = arith.addi %merged, %sum : i32
+    return %ret : i32
+  }
+
+  func.func private @add_helper(%a: i32, %b: i32) -> i32 {
+    %r = arith.addi %a, %b : i32
+    return %r : i32
+  }
+
+  func.func private @mul_helper(%a: i32, %b: i32) -> i32 {
+    %r = arith.muli %a, %b : i32
+    return %r : i32
   }
 }
 
-// CHECK-LABEL: AICORE int32_t multi_result_hint_alignment(
-// CHECK: int32_t sum =
-// CHECK-SAME: // pto: %sum
-// CHECK: int32_t scaled =
-// CHECK-SAME: // pto: %scaled
+// CHECK-LABEL: AICORE int32_t multi_result_hint_alignment(bool pred, int32_t lhs, int32_t rhs) {
+// CHECK-NOT: PTOAS_NAME_HINTS
+// CHECK-NOT: PTOAS_PROVENANCE
+// CHECK: int32_t sum = add_helper(pred ? lhs : rhs, pred ? rhs : lhs); // pto: %sum
