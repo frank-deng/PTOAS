@@ -86,12 +86,12 @@ module attributes {pto.target_arch = "a5"} {
   }
 }
 
-// CHECK: TLOAD({{v[0-9]+}}, {{v[0-9]+}});
-// CHECK: __ubuf__ int32_t* [[MGATHER_IDX:v[0-9]+]] = {{.*}};
-// CHECK: __ubuf__ float* [[MGATHER_DST:v[0-9]+]] = {{.*}};
-// CHECK: MGATHER<pto::Coalesce::Row, pto::GatherOOB::Zero>([[MGATHER_DST]], {{v[0-9]+}}, [[MGATHER_IDX]]);
-// CHECK: TLOAD({{v[0-9]+}}, {{v[0-9]+}});
-// CHECK: TLOAD({{v[0-9]+}}, {{v[0-9]+}});
-// CHECK: __ubuf__ float* [[MSCATTER_SRC:v[0-9]+]] = {{.*}};
-// CHECK: __ubuf__ int32_t* [[MSCATTER_IDX:v[0-9]+]] = {{.*}};
-// CHECK: MSCATTER<pto::Coalesce::Elem, pto::ScatterAtomicOp::Add, pto::ScatterOOB::Skip, pto::ScatterConflict::Default>({{v[0-9]+}}, [[MSCATTER_SRC]], [[MSCATTER_IDX]]);
+// CHECK: TLOAD({{[_A-Za-z][_A-Za-z0-9]*}}, {{[_A-Za-z][_A-Za-z0-9]*}});
+// CHECK: __ubuf__ int32_t* [[MGATHER_IDX:[_A-Za-z][_A-Za-z0-9]*]] = idx_tile.data();
+// CHECK: __ubuf__ float* [[MGATHER_DST:[_A-Za-z][_A-Za-z0-9]*]] = dst_tile.data();
+// CHECK: MGATHER<pto::Coalesce::Row, pto::GatherOOB::Zero>([[MGATHER_DST]], {{[_A-Za-z][_A-Za-z0-9]*}}, [[MGATHER_IDX]]);
+// CHECK: TLOAD({{[_A-Za-z][_A-Za-z0-9]*}}, {{[_A-Za-z][_A-Za-z0-9]*}});
+// CHECK: TLOAD({{[_A-Za-z][_A-Za-z0-9]*}}, {{[_A-Za-z][_A-Za-z0-9]*}});
+// CHECK: __ubuf__ float* [[MSCATTER_SRC:[_A-Za-z][_A-Za-z0-9]*]] = src_tile.data();
+// CHECK: __ubuf__ int32_t* [[MSCATTER_IDX:[_A-Za-z][_A-Za-z0-9]*]] = idx_tile.data();
+// CHECK: MSCATTER<pto::Coalesce::Elem, pto::ScatterAtomicOp::Add, pto::ScatterOOB::Skip, pto::ScatterConflict::Default>({{[_A-Za-z][_A-Za-z0-9]*}}, [[MSCATTER_SRC]], [[MSCATTER_IDX]]);

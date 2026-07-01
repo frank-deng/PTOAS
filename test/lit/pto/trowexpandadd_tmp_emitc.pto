@@ -23,5 +23,5 @@ module {
   }
 }
 
-// A5: TROWEXPANDADD([[VDST0:v[0-9]+]], [[VSRC00:v[0-9]+]], [[VSRC01:v[0-9]+]]);
-// A5: TROWEXPANDADD([[VDST1:v[0-9]+]], [[VSRC10:v[0-9]+]], [[VSRC11:v[0-9]+]], [[VTMP:v[0-9]+]]);
+// A5: TROWEXPANDADD(dst, src0, src1);
+// A5: TROWEXPANDADD(dst, src0, src1, tmp);
