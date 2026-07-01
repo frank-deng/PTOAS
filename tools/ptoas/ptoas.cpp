@@ -17,6 +17,7 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Verifier.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllPasses.h"
 #include "mlir/Parser/Parser.h"
@@ -3036,9 +3037,6 @@ static bool shouldDeclareVariablesAtTop(ModuleOp module) {
 
 static void prepareVPTOForEmission(PassManager &pm) {
   auto &kernelModulePM = pm.nest<ModuleOp>();
-  // Issue #485 workaround: unroll small constant-trip-count scf.for loops
-  // inside pto.simt_entry functions, then constant-fold the induction-variable
-  // dependent scf.if branches so subsequent canonicalize/cse eliminate them.
   kernelModulePM.addNestedPass<func::FuncOp>(
       pto::createPTOUnrollSIMTForPass());
   kernelModulePM.addPass(createSCCPPass());
@@ -3205,6 +3203,14 @@ int mlir::pto::compilePTOASModule(
     return 1;
   }
 
+  module->getOperation()->setAttr("pto.target_arch",
+                                  mlir::StringAttr::get(module->getContext(), arch));
+
+  if (failed(mlir::verify(module.get()))) {
+    llvm::errs() << "Error: input module verification failed.\n";
+    return 1;
+  }
+
   if (enableOpFusion) {
     if (arch != "a5") {
       llvm::errs() << "Warning: --enable-op-fusion is ignored because "
@@ -3286,10 +3292,22 @@ int mlir::pto::compilePTOASModule(
   }
 
   if (effectiveLevel == PTOBuildLevel::Level3) {
+    // In level3 the caller owns local memory and PTOPlanMemory is skipped, so
+    // every allocation must carry an explicit physical address. For
+    // multi-buffer, `addr` is the base of the contiguous N-slot region; the
+    // alloc lowering fans it out into the multi-address `pto.pointer_cast`
+    // PlanMemory would otherwise produce.
     bool missing = false;
     module->walk([&](pto::AllocTileOp op) {
       if (!op.getAddr()) {
         op.emitError("requires 'addr' operand when --pto-level=level3");
+        missing = true;
+      }
+    });
+    module->walk([&](pto::AllocMultiTileOp op) {
+      if (!op.getAddr()) {
+        op.emitError("pto.alloc_multi_tile requires a base 'addr' operand when "
+                     "--pto-level=level3");
         missing = true;
       }
     });
@@ -3301,6 +3319,13 @@ int mlir::pto::compilePTOASModule(
       if (op.getAddr()) {
         op.emitError(
             "unexpected 'addr' operand: only supported when --pto-level=level3");
+        hasAddr = true;
+      }
+    });
+    module->walk([&](pto::AllocMultiTileOp op) {
+      if (op.getAddr()) {
+        op.emitError("unexpected 'addr' operand on pto.alloc_multi_tile: only "
+                     "supported when --pto-level=level3");
         hasAddr = true;
       }
     });
@@ -3391,9 +3416,13 @@ int mlir::pto::compilePTOASModule(
     pm.addPass(pto::createPlanMemoryPass(planMemoryOption));
   }
   pm.addPass(pto::createPTOResolveReservedBuffersPass());
+  pm.addNestedPass<mlir::func::FuncOp>(pto::createPTORemoveIdentityTMovPass());
 
   // Conditionally add one automatic synchronization mode. Barrier-all is a
   // conservative standalone pass; InsertSync and GraphSyncSolver are set/wait
+  // solvers. Sync runs BEFORE PTOResolveBufferSelect so it sees per-use
+  // `pto.slot_marker` ops and can keep multi-buffer slot identity (const slot
+  // K vs slot K' or dynamic slot) for the alias / event-id analysis.
   // solvers, while BufidSync is A5-only get_buf/rls_buf synchronization.
   pm.addNestedPass<mlir::func::FuncOp>(
       pto::createPTOVerifySubkernelPipeContractPass());
@@ -3413,6 +3442,11 @@ int mlir::pto::compilePTOASModule(
     pm.addNestedPass<mlir::func::FuncOp>(
         pto::createPTOGraphSyncSolverPass(graphSyncOpts));
   }
+
+  // Materialize per-slot single-address `pto.pointer_cast` (constant slot)
+  // or an `arith.select` chain (dynamic slot). The multi-address cast
+  // produced by PlanMemory survives as the alloc anchor.
+  pm.addPass(pto::createPTOResolveBufferSelectPass());
 
   if (emitMlirIR) {
     if (failed(pm.run(*module))) {
@@ -3438,9 +3472,6 @@ int mlir::pto::compilePTOASModule(
   pm.addPass(createCSEPass());
   if (failed(applyConfiguredPassManagerCLOptions(pm, "main PTOAS pipeline")))
     return 1;
-
-  module->getOperation()->setAttr("pto.target_arch",
-                                  mlir::StringAttr::get(module->getContext(), arch));
 
   if (effectiveBackend == PTOBackend::VPTO) {
     if (failed(pm.run(*module))) {

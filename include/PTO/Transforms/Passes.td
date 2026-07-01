@@ -147,6 +147,28 @@ def PTOA5NormalizeTMov : Pass<"pto-a5-normalize-tmov", "func::FuncOp"> {
   let dependentDialects = ["pto::PTODialect", "func::FuncDialect"];
 }
 
+def PTORemoveIdentityTMov : Pass<"pto-remove-identity-tmov", "func::FuncOp"> {
+  let summary = "Remove plain PTO TMOV operations that copy a tile onto itself";
+  let description = [{
+    Removes side-effect-free `pto.tmov` operations whose source and destination
+    are proven to refer to the same physical tile address/range. Except for
+    exact same-SSA self-copies, the proof goes through InsertSync's
+    `BaseMemInfo` exact-range analysis for statically addressable values.
+    Same-address copies are removed only when the TMOV destination/result is
+    dead and no later same-address alias use is visible, so a live copy cannot
+    be the sole synchronization bridge. This pass runs before InsertSync so
+    deleting the identity TMOV also prevents
+    synchronization from being generated only for that no-op copy.
+  }];
+  let constructor = "mlir::pto::createPTORemoveIdentityTMovPass()";
+  let dependentDialects = [
+    "pto::PTODialect",
+    "arith::ArithDialect",
+    "func::FuncDialect",
+    "memref::MemRefDialect"
+  ];
+}
+
 
 def InferPTOMemScope : Pass<"pto-infer-mem-scope"> {
   let summary = "Infer memory scope for PTO Ops";
@@ -667,21 +689,51 @@ def PTOMaterializeTileHandles : Pass<"pto-materialize-tile-handles", "ModuleOp">
   ];
 }
 
+def PTOResolveBufferSelect : Pass<"pto-resolve-buffer-select", "ModuleOp"> {
+  let summary = "Lower pto.slot_marker to single-slot pointer_cast (multi-buffer)";
+  let description = [{
+    Consumes `pto.slot_marker %src[%k]` ops written by PTOViewToMemref to
+    thread multi-buffer slot selection through the memref layer.
+
+    The op is replaced by a fresh single-address `pto.pointer_cast` that
+    refers to the chosen physical slot:
+
+    - constant slot `k`: a single `pto.pointer_cast(addrK)` is emitted at
+      the use site, using slot k from the underlying multi-address
+      pointer_cast created by PTOPlanMemory / AllocToPointerCast.
+    - dynamic slot `%k`: per-slot single-address `pto.pointer_cast`s are
+      created and an N-way `arith.select` chain picks one according to the
+      user-supplied SSA. This pass does NOT rewrite `%k` into `iv mod N`;
+      the frontend expression is the slot selector.
+
+    The original multi-address `pto.pointer_cast` is kept in IR as the
+    "alloc anchor" so future sync passes can recognize the multi-buffer
+    geometry.
+  }];
+
+  let constructor = "mlir::pto::createPTOResolveBufferSelectPass()";
+
+  let dependentDialects = [
+    "mlir::pto::PTODialect",
+    "mlir::memref::MemRefDialect",
+    "mlir::arith::ArithDialect"
+  ];
+}
+
 def PTOUnrollSIMTFor : Pass<"pto-unroll-simt-for", "func::FuncOp"> {
   let summary =
-      "Unroll small constant-trip-count scf.for loops in pto.simt_entry functions";
+      "Unroll explicitly annotated scf.for loops in pto.simt_entry functions";
   let description = [{
     Walks functions with `pto.simt_entry` attribute and fully unrolls `scf.for`
-    loops that meet one of these criteria:
+    loops that carry the `{pto.unroll = "full"}` attribute.
 
-    1. The loop carries the `{pto.unroll = "full"}` attribute.
-    2. The loop has constant lower bound, upper bound, and step, and the trip
-       count does not exceed the configurable `max-trip-count` threshold (default 64).
+    Only loops with constant lower bound, upper bound, and positive step are
+    unrolled.  The annotation is opt-in: loops without the attribute are
+    left unchanged regardless of trip count.
 
     Full unrolling enables subsequent canonicalize/sccp/cse to constant-fold
     induction-variable-dependent conditionals (e.g. `scf.if i < 10`), eliminating
-    divergent branches that can cause the AICore backend to emit predicated END
-    instructions inside SIMTVF kernels.
+    divergent branches inside SIMTVF kernels.
 
     This pass must run before `createConvertSCFToCFPass` (i.e. before LLVM
     lowering) so that the unrolled structured control flow can be canonicalized.
@@ -692,11 +744,6 @@ def PTOUnrollSIMTFor : Pass<"pto-unroll-simt-for", "func::FuncOp"> {
     "mlir::scf::SCFDialect",
     "mlir::pto::PTODialect",
     "mlir::arith::ArithDialect"
-  ];
-  let options = [
-    Option<"maxTripCount", "max-trip-count", "int64_t", "64",
-           "Maximum constant trip count to auto-unroll (default: 64). "
-           "Loops exceeding this are left unchanged.">
   ];
 }
 
