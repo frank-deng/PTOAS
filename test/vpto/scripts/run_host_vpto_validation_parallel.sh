@@ -74,13 +74,25 @@ WORK_SPACE="$(cd "${WORK_SPACE}" && pwd)"
 SUMMARY_FILE="${WORK_SPACE}/parallel-summary.tsv"
 RUNNER_LOG="${WORK_SPACE}/parallel-runner.log"
 
+is_ptodsl_case_dir() {
+  [[ -f "$1/kernel.py" ]]
+}
+
+validate_case_dir() {
+  local case_name="$1"
+  local case_dir="$2"
+
+  [[ -f "${case_dir}/kernel.pto" ]] ||
+    die "case ${case_name} must provide kernel.pto"
+  if is_ptodsl_case_dir "${case_dir}"; then
+    return 0
+  fi
+  for f in launch.cpp main.cpp golden.py compare.py; do
+    [[ -f "${case_dir}/${f}" ]] || die "case ${case_name} is missing ${f}"
+  done
+}
+
 discover_cases() {
-  local required_files=(
-    launch.cpp
-    main.cpp
-    golden.py
-    compare.py
-  )
   local onboard_only_prefix="onboard-only/"
 
   if [[ -n "${CASE_NAME}" ]]; then
@@ -90,26 +102,24 @@ discover_cases() {
     fi
     local requested_dir="${CASES_ROOT}/${CASE_NAME}"
     [[ -d "${requested_dir}" ]] || die "unknown case: ${CASE_NAME}"
-    for f in "${required_files[@]}"; do
-      [[ -f "${requested_dir}/${f}" ]] || die "case ${CASE_NAME} is missing ${f}"
-    done
-    [[ -f "${requested_dir}/kernel.pto" ]] ||
-      die "case ${CASE_NAME} must provide kernel.pto"
+    validate_case_dir "${CASE_NAME}" "${requested_dir}"
     printf "%s\n" "${CASE_NAME}"
     return 0
   fi
 
   find "${CASES_ROOT}" -mindepth 1 -type d | sort | while read -r dir; do
-    local ok=1
-    for f in "${required_files[@]}"; do
-      if [[ ! -f "${dir}/${f}" ]]; then
-        ok=0
-        break
-      fi
-    done
-    [[ "${ok}" -eq 1 ]] || continue
     [[ -f "${dir}/kernel.pto" ]] || continue
     local rel="${dir#${CASES_ROOT}/}"
+    if ! is_ptodsl_case_dir "${dir}"; then
+      local ok=1
+      for f in launch.cpp main.cpp golden.py compare.py; do
+        if [[ ! -f "${dir}/${f}" ]]; then
+          ok=0
+          break
+        fi
+      done
+      [[ "${ok}" -eq 1 ]] || continue
+    fi
     if [[ "${DEVICE:-SIM}" == "SIM" && "${COMPILE_ONLY:-0}" != "1" &&
           "${rel}" == "${onboard_only_prefix}"* ]]; then
       continue
