@@ -63,7 +63,8 @@ module attributes {pto.target_arch = "a5", pto.kernel_kind = #pto.kernel_kind<ve
 
 // CHECK-LABEL: llvm.func @stride_vector_ldg_stg_dynamic
 // addptr: GEP on f32 with runtime i64 index (%arg2)
-// CHECK: %[[ADDR:.*]] = llvm.getelementptr {{%.*}}[%arg{{[0-9]+}}] : (!llvm.ptr<1>, i64) -> !llvm.ptr<1>, f32
+// addptr: GEP on f32 with runtime i64 index
+// CHECK: llvm.getelementptr {{%.*}}[%arg{{[0-9]+}}] : (!llvm.ptr<1>, i64) -> !llvm.ptr<1>, f32
 // After the addptr GEP, there must NOT be another GEP carrying a runtime
 // index (i.e., no second application of the offset inside ldg).
 // CHECK-NOT: llvm.getelementptr {{%.*}}[%arg{{[0-9]+}}]
