@@ -47,8 +47,8 @@ module {
 // CHECK-NOT: PTOAS_NAME_HINTS
 // CHECK-NOT: PTOAS_PROVENANCE
 // CHECK: // pto: %pair#0
-// CHECK-NEXT: int32_t [[PAIR:[_A-Za-z][_A-Za-z0-9]*]] = v1 ? v2 : v3;
+// CHECK-NEXT: int32_t [[PAIR:v[0-9]+]] = v1 ? v2 : v3;
 // CHECK: // pto: %sum
-// CHECK-NEXT: int32_t [[SUM:[_A-Za-z][_A-Za-z0-9]*]] = add_helper([[PAIR]], v1 ? v3 : v2);
+// CHECK-NEXT: int32_t [[SUM:v[0-9]+]] = add_helper([[PAIR]], v1 ? v3 : v2);
 // CHECK: // pto: %ret
 // CHECK-NEXT: return (int32_t) ((uint32_t) mul_helper([[SUM]], [[PAIR]]) + (uint32_t) [[SUM]]);

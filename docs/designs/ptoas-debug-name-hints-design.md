@@ -169,7 +169,8 @@ loc(fused<metadata=["lhs", "rhs", "acc"]>[...])
 本次实现里，控制流合流出来的 block argument 采用保守传播策略：
 
 - 先尽量把 block argument 名字传播到 EmitC value loc
-- 若某条 lowering 路径无法稳定维持该关联，则降级为不附带该条名字提示，而不是在 C++ 文本层猜测性回填
+- 若某条 lowering 路径无法稳定维持该关联，则 fail-closed 为不附带该条名字提示，而不是在 C++ 文本层猜测性回填
+- 当前阶段的 provenance 注释只针对“有结果的 op”插 marker；因此 merged block argument 不保证一定落成单独的 `// pto: %name` 注释
 
 ## 8. C++ 输出策略
 
@@ -218,7 +219,7 @@ loc(fused<metadata=["lhs", "rhs", "acc"]>[...])
 该设计需要覆盖以下环节：
 
 - 前端生成 PTO IR 时附带名字提示
-- textual `.pto` 输入时，从源码文本恢复 SSA / 参数 / block arg 名
+- textual `.pto` 输入时，基于 `AsmParserState` 恢复 SSA / 参数 / block arg 名
 - PTOAS rewrite / lowering helper 在替换时传播名字
 - `PTOToEmitC` 中新建 `emitc::VariableOp`、`emitc::CastOp` 等值时继承或派生 provenance
 - 最终 `translateToCpp` 后在 PTOAS 包装层中仅把 provenance marker 转成安全注释
@@ -265,9 +266,9 @@ LocalTensor<half> v12 = ...;
 
 - 该设计当前阶段只能提供“定位来源”，不能提供“最终变量名语义化”
 - 对 aggressive CSE 后的公共值，只能保留最终幸存值的名字
-- 对 textual `.pto` 的 SSA 名恢复依赖源码文本与解析顺序一致；它是调试增强，不是语义机制
+- 对 textual `.pto` 的 SSA 名恢复依赖 `AsmParserState` 暴露的解析结果；若 lowering 后的 CFG 形状不再稳定匹配，则相关 hint 会 fail-closed 丢弃，而不是猜测性错挂
 
-## 12. 测试建议
+## 13. 测试建议
 
 建议至少覆盖以下测试：
 
@@ -275,10 +276,10 @@ LocalTensor<half> v12 = ...;
 - 多结果 op：多个结果的 provenance 不会错位
 - 名字含特殊字符：注释能安全转义
 - 控制流 / `emitc.variable` / hoist：注释不会错挂到错误声明
-- textual `.pto`：函数参数名、局部 SSA 名、CFG block arg 名至少能在 provenance 注释中保留
+- textual `.pto`：函数参数名、局部 SSA 名要能在 provenance 注释中保留；CFG block arg 至少要验证“不发生错挂”，不要求当前阶段每个 merged arg 都生成单独注释
 - 未提供 hint：仍保持现有 `vN` 回退行为
 
-## 13. 结论
+## 14. 结论
 
 本设计采用“名字作为调试元数据”的路线：
 

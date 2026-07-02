@@ -43,8 +43,8 @@ module {
 // CHECK-LABEL: AICORE void provenance_caller(
 // CHECK-NOT: PTOAS_PROVENANCE
 // CHECK: // pto: %0
-// CHECK-NEXT: int32_t [[R:[_A-Za-z][_A-Za-z0-9]*]] = provenance_helper(
+// CHECK-NEXT: int32_t [[R:v[0-9]+]] = provenance_helper(
 // CHECK-LABEL: AICORE void provenance_escape(
 // CHECK-NOT: PTOAS_PROVENANCE
 // CHECK: // pto: %a*/b
-// CHECK-NEXT: int32_t [[ESCAPED:[_A-Za-z][_A-Za-z0-9]*]] = (
+// CHECK-NEXT: int32_t [[ESCAPED:v[0-9]+]] = (

@@ -191,6 +191,10 @@ parseTextualModule(std::unique_ptr<llvm::MemoryBuffer> inputBuffer,
     llvm::errs() << "Error: Failed to parse MLIR.\n";
     return OwningOpRef<ModuleOp>();
   }
+  // `parseSourceFile<ModuleOp>` internally uses the same helper to wrap the
+  // parsed top-level block. We spell it out here because the public wrapper
+  // does not expose `AsmParserState`, which we need for textual SSA-name
+  // recovery.
   OwningOpRef<ModuleOp> module =
       mlir::detail::constructContainerOpForParserIfNecessary<ModuleOp>(
           &parsedBlock, &context, sourceFileLoc);

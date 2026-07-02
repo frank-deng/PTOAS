@@ -2009,28 +2009,32 @@ parseNameHintMarker(llvm::StringRef markerBody) {
 
 static void stripHintMarkersWithPrefix(std::string &cpp,
                                        llvm::StringRef markerPrefix) {
+  std::string out;
+  out.reserve(cpp.size());
   size_t searchPos = 0;
-  while (true) {
+  while (searchPos < cpp.size()) {
     size_t markerPos = cpp.find(markerPrefix.str(), searchPos);
-    if (markerPos == std::string::npos)
+    if (markerPos == std::string::npos) {
+      out.append(cpp, searchPos, std::string::npos);
       break;
+    }
 
+    out.append(cpp, searchPos, markerPos - searchPos);
     size_t markerEnd = cpp.find("*/", markerPos + markerPrefix.size());
-    if (markerEnd == std::string::npos)
+    if (markerEnd == std::string::npos) {
+      out.append(cpp, markerPos, std::string::npos);
       break;
+    }
     markerEnd += 2;
     while (markerEnd < cpp.size() &&
            (cpp[markerEnd] == '\r' || cpp[markerEnd] == '\n'))
       ++markerEnd;
-
-    cpp.erase(markerPos, markerEnd - markerPos);
-    searchPos = markerPos;
+    searchPos = markerEnd;
   }
+  cpp.swap(out);
 }
 
 static void stripAllHintMarkers(std::string &cpp) {
-  stripHintMarkersWithPrefix(cpp, "/* PTOAS_NAME_HINTS:");
-  stripHintMarkersWithPrefix(cpp, "/* PTOAS_PARAM_HINTS:");
   stripHintMarkersWithPrefix(cpp, "/* PTOAS_PROVENANCE:");
 }
 
