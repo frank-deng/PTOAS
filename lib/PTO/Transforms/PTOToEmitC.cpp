@@ -175,8 +175,9 @@ static void appendRawLocationNameHints(Location loc,
       }
     }
 
-    for (Location childLoc : fusedLoc.getLocations())
-      appendRawLocationNameHints(childLoc, hints);
+    // Only metadata explicitly attached by PTOAS name-hint recovery carries an
+    // ordered result-name list. Ordinary fused child locations are debug
+    // provenance, not result-indexed name hints.
     return;
   }
 

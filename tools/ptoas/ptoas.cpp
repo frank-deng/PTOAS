@@ -722,8 +722,9 @@ static void appendLocationNameHints(Location loc,
       }
     }
 
-    for (Location childLoc : fusedLoc.getLocations())
-      appendLocationNameHints(childLoc, hints);
+    // Only metadata explicitly attached by PTOAS name-hint recovery carries an
+    // ordered result-name list. Ordinary fused child locations are debug
+    // provenance, not result-indexed name hints.
     return;
   }
 
@@ -776,8 +777,9 @@ static void appendRawLocationProvenance(Location loc,
       }
     }
 
-    for (Location childLoc : fusedLoc.getLocations())
-      appendRawLocationProvenance(childLoc, hints);
+    // Only metadata explicitly attached by PTOAS name-hint recovery carries an
+    // ordered result-name list. Ordinary fused child locations are debug
+    // provenance, not result-indexed name hints.
     return;
   }
 
