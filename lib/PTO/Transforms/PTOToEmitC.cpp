@@ -6543,11 +6543,11 @@ struct PTOCmoCleanToEmitC : public OpConversionPattern<pto::CmoCleanOp> {
   }
 };
 
-struct PTOCmoInvalidateToEmitC
-    : public OpConversionPattern<pto::CmoInvalidateOp> {
-  using OpConversionPattern<pto::CmoInvalidateOp>::OpConversionPattern;
+struct PTOCmoCacheInvalidToEmitC
+    : public OpConversionPattern<pto::CmoCacheInvalidOp> {
+  using OpConversionPattern<pto::CmoCacheInvalidOp>::OpConversionPattern;
 
-  LogicalResult matchAndRewrite(pto::CmoInvalidateOp op, OpAdaptor adaptor,
+  LogicalResult matchAndRewrite(pto::CmoCacheInvalidOp op, OpAdaptor adaptor,
                                 ConversionPatternRewriter &rewriter) const override {
     (void)adaptor;
     if (!isGmCmoSpace(op.getSpace().getAddressSpace()))
@@ -13844,10 +13844,9 @@ static void populatePTOToEmitCPatterns(RewritePatternSet &patterns,
     PTOTGemvMXAccToTGEMV_MX,
     PTOTGemvMXBiasToTGEMV_MX,
     PTOBarrierToEmitC,
-    PTOFenceToEmitC<pto::FenceReleaseOp>,
-    PTOFenceToEmitC<pto::FenceAcquireOp>,
+    PTOFenceToEmitC<pto::FenceBarrierAllOp>,
     PTOCmoCleanToEmitC,
-    PTOCmoInvalidateToEmitC
+    PTOCmoCacheInvalidToEmitC
   >(typeConverter, ctx);
 
   patterns.add<CallToEmitC, ReturnToEmitC>(typeConverter, ctx);

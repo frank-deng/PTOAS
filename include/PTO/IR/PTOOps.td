@@ -2828,7 +2828,7 @@ def CmoCleanOp : PTO_Op<"cmo.clean"> {
   let assemblyFormat = "`all` $space attr-dict";
 }
 
-def CmoInvalidateOp : PTO_Op<"cmo.invalidate"> {
+def CmoCacheInvalidOp : PTO_Op<"cmo.cacheinvalid"> {
   let summary = "Invalidate cache lines for a memory space";
   let description = [{
     Cache maintenance operation that invalidates cache lines for the specified
@@ -2840,22 +2840,13 @@ def CmoInvalidateOp : PTO_Op<"cmo.invalidate"> {
   let assemblyFormat = "`all` $space attr-dict";
 }
 
-def FenceReleaseOp : PTO_Op<"fence.release"> {
-  let summary = "Release memory fence";
+def FenceBarrierAllOp : PTO_Op<"fence.barrier_all"> {
+  let summary = "All-direction memory fence for a visibility scope";
   let description = [{
-    Release fence for publishing payload writes before a following signal
-    operation. `scope = ddr` lowers to `dsb(DSB_DDR)`.
-  }];
-
-  let arguments = (ins PTO_FenceScopeAttr:$scope);
-  let assemblyFormat = "$scope attr-dict";
-}
-
-def FenceAcquireOp : PTO_Op<"fence.acquire"> {
-  let summary = "Acquire memory fence";
-  let description = [{
-    Acquire fence for ordering signal observation before following payload
-    reads. `scope = ddr` lowers to `dsb(DSB_DDR)`.
+    Memory fence for a visibility scope. Around signal/payload communication it
+    can be used as the producer-side publish barrier or the consumer-side
+    acquire barrier depending on placement. `scope = ddr` lowers to
+    `dsb(DSB_DDR)`.
   }];
 
   let arguments = (ins PTO_FenceScopeAttr:$scope);

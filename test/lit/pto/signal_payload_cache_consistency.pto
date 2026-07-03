@@ -22,7 +22,7 @@ module {
 
     pto.store_scalar %v_i32, %payload_ptr[%c0] : !pto.ptr<i32>, i32
     pto.cmo.clean all #pto.address_space<gm>
-    pto.fence.release #pto.fence_scope<ddr>
+    pto.fence.barrier_all #pto.fence_scope<ddr>
 
     %sig_view = pto.make_tensor_view %signal_ptr,
       shape = [%c1], strides = [%c1] : !pto.tensor_view<1xi32>
@@ -44,7 +44,7 @@ module {
 
     pto.store_scalar %v_i32, %payload_ptr[%c0] : !pto.ptr<i32>, i32
     pto.cmo.clean all #pto.address_space<gm>
-    pto.fence.release #pto.fence_scope<ddr>
+    pto.fence.barrier_all #pto.fence_scope<ddr>
 
     %sig_view = pto.make_tensor_view %signal_ptr,
       shape = [%c1], strides = [%c1] : !pto.tensor_view<1xi32>
@@ -72,7 +72,7 @@ module {
     pto.comm.twait(%sig, %v_i32 : !pto.partition_tensor_view<1xi32>, i32)
         {cmp = #pto<wait_cmp ge>}
 
-    pto.cmo.invalidate all #pto.address_space<gm>
+    pto.cmo.cacheinvalid all #pto.address_space<gm>
     %val = pto.load_scalar %payload_ptr[%c0] : !pto.ptr<i32> -> i32
     pto.store_scalar %val, %payload_ptr[%c0] : !pto.ptr<i32>, i32
     return
@@ -94,7 +94,7 @@ module {
     pto.comm.twait(%sig, %v_i32 : !pto.partition_tensor_view<1xi32>, i32)
         {cmp = #pto<wait_cmp ge>}
 
-    pto.cmo.invalidate all #pto.address_space<gm>
+    pto.cmo.cacheinvalid all #pto.address_space<gm>
     %val = pto.load_scalar %payload_ptr[%c0] : !pto.ptr<i32> -> i32
     pto.store_scalar %val, %payload_ptr[%c0] : !pto.ptr<i32>, i32
     return
@@ -103,7 +103,7 @@ module {
   func.func @explicit_fence_acquire(
       %signal_ptr: !pto.ptr<i32>)
       attributes {pto.kernel_kind = #pto.kernel_kind<vector>} {
-    pto.fence.acquire #pto.fence_scope<ddr>
+    pto.fence.barrier_all #pto.fence_scope<ddr>
     return
   }
 
@@ -123,7 +123,7 @@ module {
     %ready = pto.comm.ttest(%sig, %v_i32 : !pto.partition_tensor_view<1xi32>, i32)
         {cmp = #pto<wait_cmp ge>} -> i1
 
-    pto.cmo.invalidate all #pto.address_space<gm>
+    pto.cmo.cacheinvalid all #pto.address_space<gm>
     %val = pto.load_scalar %payload_ptr[%c0] : !pto.ptr<i32> -> i32
     scf.if %ready {
       pto.store_scalar %val, %payload_ptr[%c0] : !pto.ptr<i32>, i32
@@ -141,7 +141,7 @@ module {
 
     pto.store_scalar %v_i32, %payload_ptr[%c0] : !pto.ptr<i32>, i32
     pto.cmo.clean all #pto.address_space<gm>
-    pto.fence.release #pto.fence_scope<ddr>
+    pto.fence.barrier_all #pto.fence_scope<ddr>
 
     %sig_view = pto.make_tensor_view %signal_ptr,
       shape = [%c1], strides = [%c1] : !pto.tensor_view<1xi32>
@@ -151,7 +151,7 @@ module {
     pto.comm.twait(%sig, %v_i32 : !pto.partition_tensor_view<1xi32>, i32)
         {cmp = #pto<wait_cmp ge>}
 
-    pto.cmo.invalidate all #pto.address_space<gm>
+    pto.cmo.cacheinvalid all #pto.address_space<gm>
     %val = pto.load_scalar %payload_ptr[%c0] : !pto.ptr<i32> -> i32
     pto.store_scalar %val, %payload_ptr[%c0] : !pto.ptr<i32>, i32
     return

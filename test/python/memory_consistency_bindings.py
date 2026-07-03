@@ -22,15 +22,13 @@ def main() -> None:
         module = Module.create()
         with InsertionPoint(module.body):
             pto.CmoCleanOp(pto.AddressSpace.GM)
-            pto.CmoInvalidateOp(pto.AddressSpace.GM)
-            pto.FenceReleaseOp(pto.FenceScope.DDR)
-            pto.FenceAcquireOp(pto.FenceScope.DDR)
+            pto.CmoCacheInvalidOp(pto.AddressSpace.GM)
+            pto.FenceBarrierAllOp(pto.FenceScope.DDR)
 
         text = str(module)
         assert_contains(text, "pto.cmo.clean all <gm>")
-        assert_contains(text, "pto.cmo.invalidate all <gm>")
-        assert_contains(text, "pto.fence.release <ddr>")
-        assert_contains(text, "pto.fence.acquire <ddr>")
+        assert_contains(text, "pto.cmo.cacheinvalid all <gm>")
+        assert_contains(text, "pto.fence.barrier_all <ddr>")
 
     print("memory_consistency_bindings: PASS")
 

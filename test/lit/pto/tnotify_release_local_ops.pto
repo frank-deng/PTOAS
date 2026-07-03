@@ -8,7 +8,7 @@
 
 // TNotify release analysis must be payload-specific. Some local tile ops run on
 // MTE3 or FIX internally, but they do not publish GM payloads and must not
-// require a DDR release fence or emit a release drain before TNotify.
+// require a barrier_all or emit a release drain before TNotify.
 
 // RUN: ptoas --pto-arch=a5 %s -o - 2>&1 | FileCheck %s
 

@@ -82,7 +82,7 @@ struct TNotifyReleaseState {
       cleanGmCache = false;
   }
 
-  void applyFenceRelease(pto::FenceScope scope) {
+  void applyFenceBarrierAll(pto::FenceScope scope) {
     if (scope != pto::FenceScope::DDR)
       return;
     if (drainMte3 || drainFix || cleanGmCache)
@@ -116,12 +116,12 @@ struct SignalAcquireState {
     dirtyGmCache = false;
   }
 
-  void applyFenceRelease(pto::FenceScope scope) {
+  void applyFenceBarrierAll(pto::FenceScope scope) {
     if (scope == pto::FenceScope::DDR && !dirtyGmCache)
       cleanNeedsFence = false;
   }
 
-  void applyCmoInvalidate(pto::AddressSpace space) {
+  void applyCmoCacheInvalid(pto::AddressSpace space) {
     if (!isGmAddressSpace(space) || dirtyGmCache || cleanNeedsFence)
       return;
     pendingInvalidateGmCache = false;
@@ -180,8 +180,8 @@ static TNotifyReleaseState getReleaseStateForMacroModel(Operation *op) {
 }
 
 static TNotifyReleaseState getDirectTNotifyReleaseState(Operation *op) {
-  if (isa<pto::BarrierOp, pto::CmoCleanOp, pto::CmoInvalidateOp,
-          pto::FenceReleaseOp, pto::FenceAcquireOp>(op))
+  if (isa<pto::BarrierOp, pto::CmoCleanOp, pto::CmoCacheInvalidOp,
+          pto::FenceBarrierAllOp>(op))
     return {};
 
   if (auto store = dyn_cast<pto::StoreScalarOp>(op)) {
@@ -233,18 +233,18 @@ static TNotifyReleaseState collectTNotifyReleaseState(Region &region) {
   return state;
 }
 
-static void applyFenceReleaseForSummary(pto::FenceReleaseOp fence,
-                                        TNotifyReleaseState &state) {
+static void applyFenceBarrierAllForSummary(pto::FenceBarrierAllOp fence,
+                                           TNotifyReleaseState &state) {
   if (fence.getScope().getScope() != pto::FenceScope::DDR)
     return;
 
   // The real annotation pass inserts the pending GM-write pipe drain before a
-  // release fence.  Loop summaries must model that transfer without mutating IR,
+  // barrier_all.  Loop summaries must model that transfer without mutating IR,
   // otherwise already-released loop-carried writes are reported again at the
   // next iteration's TNotify.
   state.drainMte3 = false;
   state.drainFix = false;
-  state.applyFenceRelease(fence.getScope().getScope());
+  state.applyFenceBarrierAll(fence.getScope().getScope());
 }
 
 static TNotifyReleaseState getTNotifyReleaseExitStateForBlock(
@@ -277,8 +277,8 @@ getTNotifyReleaseExitState(Operation *op,
     pendingState.applyBarrier(barrier.getPipe().getPipe());
   if (auto cmo = dyn_cast<pto::CmoCleanOp>(op))
     pendingState.applyCmoClean(cmo.getSpace().getAddressSpace());
-  if (auto fence = dyn_cast<pto::FenceReleaseOp>(op))
-    applyFenceReleaseForSummary(fence, pendingState);
+  if (auto fence = dyn_cast<pto::FenceBarrierAllOp>(op))
+    applyFenceBarrierAllForSummary(fence, pendingState);
   return pendingState;
 }
 
@@ -299,8 +299,8 @@ static func::FuncOp lookupCallee(func::CallOp call) {
 }
 
 static bool isMemoryConsistencyRelevantDirectOp(Operation *op) {
-  if (isa<pto::BarrierOp, pto::CmoCleanOp, pto::CmoInvalidateOp,
-          pto::FenceReleaseOp, pto::FenceAcquireOp, pto::TNotifyOp,
+  if (isa<pto::BarrierOp, pto::CmoCleanOp, pto::CmoCacheInvalidOp,
+          pto::FenceBarrierAllOp, pto::TNotifyOp,
           pto::TWaitOp, pto::TTestOp, pto::TLoadOp, pto::TPrefetchOp,
           pto::TStoreOp, pto::TStoreFPOp>(op))
     return true;
@@ -409,16 +409,16 @@ static void diagnoseTNotifyRelease(pto::TNotifyOp op,
   }
   if (state.needsDsbDdr) {
     op.emitOpError()
-        << "requires explicit `pto.fence.release #pto.fence_scope<ddr>` "
+        << "requires explicit `pto.fence.barrier_all #pto.fence_scope<ddr>` "
            "before publishing a signal after GM writes or cache clean; "
-           "PTOAS inserts the required MTE3/FIX pipe drain before the "
-           "release fence when needed";
+           "PTOAS inserts the required MTE3/FIX pipe drain before "
+           "`pto.fence.barrier_all` when needed";
     hasFailure = true;
   }
 }
 
-static void insertDrainsBeforeReleaseFence(pto::FenceReleaseOp fence,
-                                           TNotifyReleaseState &state) {
+static void insertDrainsBeforeBarrierAll(pto::FenceBarrierAllOp fence,
+                                         TNotifyReleaseState &state) {
   if (fence.getScope().getScope() != pto::FenceScope::DDR)
     return;
   OpBuilder builder(fence);
@@ -500,9 +500,9 @@ annotateTNotifyReleaseForBlock(Block &block,
       pendingState.applyBarrier(barrier.getPipe().getPipe());
     if (auto cmo = dyn_cast<pto::CmoCleanOp>(op))
       pendingState.applyCmoClean(cmo.getSpace().getAddressSpace());
-    if (auto fence = dyn_cast<pto::FenceReleaseOp>(op)) {
-      insertDrainsBeforeReleaseFence(fence, pendingState);
-      pendingState.applyFenceRelease(fence.getScope().getScope());
+    if (auto fence = dyn_cast<pto::FenceBarrierAllOp>(op)) {
+      insertDrainsBeforeBarrierAll(fence, pendingState);
+      pendingState.applyFenceBarrierAll(fence.getScope().getScope());
     }
   }
   return pendingState;
@@ -546,8 +546,8 @@ static void diagnoseAcquireLoad(pto::LoadScalarOp op,
   if (state.dirtyGmCache) {
     op.emitOpError()
         << "requires explicit `pto.cmo.clean all #pto.address_space<gm>`, "
-           "`pto.fence.release #pto.fence_scope<ddr>`, and "
-           "`pto.cmo.invalidate all #pto.address_space<gm>` before a "
+           "`pto.fence.barrier_all #pto.fence_scope<ddr>`, and "
+           "`pto.cmo.cacheinvalid all #pto.address_space<gm>` before a "
            "cacheable GM load after signal acquire when dirty GM cache may "
            "exist";
     hasFailure = true;
@@ -555,13 +555,13 @@ static void diagnoseAcquireLoad(pto::LoadScalarOp op,
   }
   if (state.cleanNeedsFence) {
     op.emitOpError()
-        << "requires explicit `pto.fence.release #pto.fence_scope<ddr>` "
+        << "requires explicit `pto.fence.barrier_all #pto.fence_scope<ddr>` "
            "after GM cache clean and before acquire invalidate";
     hasFailure = true;
     return;
   }
   op.emitOpError()
-      << "requires explicit `pto.cmo.invalidate all #pto.address_space<gm>` "
+      << "requires explicit `pto.cmo.cacheinvalid all #pto.address_space<gm>` "
          "before a cacheable GM load after `pto.comm.twait` or successful "
          "`pto.comm.ttest`";
   hasFailure = true;
@@ -584,10 +584,10 @@ static SignalAcquireState collectSignalAcquireState(Operation *op) {
     state.dirtyGmCache = false;
   if (auto cmo = dyn_cast<pto::CmoCleanOp>(op))
     state.applyCmoClean(cmo.getSpace().getAddressSpace());
-  if (auto fence = dyn_cast<pto::FenceReleaseOp>(op))
-    state.applyFenceRelease(fence.getScope().getScope());
-  if (auto cmo = dyn_cast<pto::CmoInvalidateOp>(op))
-    state.applyCmoInvalidate(cmo.getSpace().getAddressSpace());
+  if (auto fence = dyn_cast<pto::FenceBarrierAllOp>(op))
+    state.applyFenceBarrierAll(fence.getScope().getScope());
+  if (auto cmo = dyn_cast<pto::CmoCacheInvalidOp>(op))
+    state.applyCmoCacheInvalid(cmo.getSpace().getAddressSpace());
 
   for (Region &region : op->getRegions())
     for (Block &block : region)
@@ -646,10 +646,10 @@ annotateSignalAcquireForBlock(Block &block, SignalAcquireState entryState,
       state.dirtyGmCache = false;
     if (auto cmo = dyn_cast<pto::CmoCleanOp>(op))
       state.applyCmoClean(cmo.getSpace().getAddressSpace());
-    if (auto fence = dyn_cast<pto::FenceReleaseOp>(op))
-      state.applyFenceRelease(fence.getScope().getScope());
-    if (auto cmo = dyn_cast<pto::CmoInvalidateOp>(op))
-      state.applyCmoInvalidate(cmo.getSpace().getAddressSpace());
+    if (auto fence = dyn_cast<pto::FenceBarrierAllOp>(op))
+      state.applyFenceBarrierAll(fence.getScope().getScope());
+    if (auto cmo = dyn_cast<pto::CmoCacheInvalidOp>(op))
+      state.applyCmoCacheInvalid(cmo.getSpace().getAddressSpace());
 
     SignalAcquireState combinedRegionExitState;
     for (Region &region : op.getRegions()) {
