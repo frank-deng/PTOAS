@@ -146,6 +146,10 @@ static std::string getMemorySpaceString(MemRefType memrefType) {
                      : "gm";
 }
 
+static std::string getMemorySpaceString(pto::PartitionTensorViewType) {
+  return "gm";
+}
+
 static StringRef getBLayoutString(pto::BLayout layout) {
   return layout == pto::BLayout::ColMajor ? "col_major" : "row_major";
 }
@@ -530,6 +534,39 @@ static void appendViewOperandSpecJson(std::string &json, Value operand,
   json += "}";
 }
 
+static SmallVector<int64_t> computeCompactStrides(ArrayRef<int64_t> shape) {
+  SmallVector<int64_t> strides(shape.size(), 1);
+  int64_t running = 1;
+  for (int64_t i = static_cast<int64_t>(shape.size()) - 1; i >= 0; --i) {
+    strides[i] = running;
+    if (ShapedType::isDynamic(shape[i]) || ShapedType::isDynamic(running)) {
+      running = ShapedType::kDynamic;
+      continue;
+    }
+    running *= shape[i];
+  }
+  return strides;
+}
+
+static void appendViewOperandSpecJson(std::string &json, Value operand,
+                                      pto::PartitionTensorViewType viewType) {
+  std::string dtype = getDtypeString(viewType.getElementType());
+  json += "{\"kind\":\"view\",\"dtype\":\"" + dtype + "\",\"shape\":";
+  ArrayRef<int64_t> shape = viewType.getShape();
+  appendJsonDimArray(json, shape);
+  json += ",\"strides\":";
+  appendJsonDimArray(json, computeCompactStrides(shape));
+  json += ",\"memory_space\":\"";
+  json += getMemorySpaceString(viewType);
+  json += "\"";
+  if (auto layout = getViewLayoutString(resolveViewLayout(operand))) {
+    json += ",\"config\":{\"layout\":\"";
+    json += *layout;
+    json += "\"}";
+  }
+  json += "}";
+}
+
 static void appendVectorOperandSpecJson(std::string &json,
                                         VectorType vectorType) {
   std::string dtype = getDtypeString(vectorType.getElementType());
@@ -574,6 +611,16 @@ buildOperandSpecsJson(Operation *operation) {
         return std::nullopt;
       }
       appendViewOperandSpecJson(json, operand, memrefType);
+      continue;
+    }
+
+    if (auto viewType = dyn_cast<pto::PartitionTensorViewType>(type)) {
+      if (getDtypeString(viewType.getElementType()).empty()) {
+        operation->emitError(
+            "InsertTemplateAttributes encountered an unsupported view dtype");
+        return std::nullopt;
+      }
+      appendViewOperandSpecJson(json, operand, viewType);
       continue;
     }
 
