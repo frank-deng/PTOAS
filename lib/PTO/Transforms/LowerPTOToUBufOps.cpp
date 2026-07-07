@@ -600,6 +600,25 @@ struct LowerPTOToUBufOpsPass
       }
     }
 
+    // ---- tlog → pto.ub.vln ----
+    {
+      SmallVector<pto::TLogOp> ops;
+      func.walk([&](pto::TLogOp op) { ops.push_back(op); });
+      for (auto op : ops) {
+        auto info = extractTileShapeInfoFromValue(op.getDst(), tileShapes);
+        if (!info)
+          continue;
+        auto [dstPtr, srcPtr, ptrType] =
+            lowerShiftOpCommon(builder, ctx, op, op.getDst(), op.getSrc(),
+                               tileShapes);
+        if (!dstPtr)
+          continue;
+        dispatchUnary<pto::UBVlnOp>(op.getLoc(), builder, dstPtr, srcPtr,
+                                    ptrType, *info);
+        op.erase();
+      }
+    }
+
     // ---- tsqrt → pto.ub.vsqrt ----
     {
       SmallVector<pto::TSqrtOp> ops;

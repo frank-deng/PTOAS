@@ -52,7 +52,7 @@ This can be selected with `--backend vpto --target a5`.
 
 | Ops | Dtypes | Shapes | Total |
 |-----|--------|--------|-------|
-| abs, relu, neg, exp, sqrt, rsqrt, recip | float32, float16 | 5 per dtype | 70 |
+| abs, relu, neg, exp, log, sqrt, rsqrt, recip | float32, float16 | 5 per dtype | 80 |
 
 ### Scalar-tile elementwise
 
@@ -65,9 +65,9 @@ This can be selected with `--backend vpto --target a5`.
 | Suite | Total |
 |-------|-------|
 | Binary, bitwise, and shifts | 192 |
-| Unary | 70 |
+| Unary | 80 |
 | Scalar-tile | 120 |
-| Total | 382 |
+| Total | 392 |
 
 ### Shape coverage (exercises lowering code paths)
 

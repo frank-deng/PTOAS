@@ -111,6 +111,7 @@ def PTO_UBVnotOp : PTO_UBufUnaryOp<"ub.vnot">;
 def PTO_UBVabsOp : PTO_UBufUnaryOp<"ub.vabs">;
 def PTO_UBVreluOp : PTO_UBufUnaryOp<"ub.vrelu">;
 def PTO_UBVexpOp : PTO_UBufUnaryOp<"ub.vexp">;
+def PTO_UBVlnOp : PTO_UBufUnaryOp<"ub.vln">;
 def PTO_UBVsqrtOp : PTO_UBufUnaryOp<"ub.vsqrt">;
 def PTO_UBVrsqrtOp : PTO_UBufUnaryOp<"ub.vrsqrt">;
 

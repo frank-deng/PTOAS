@@ -29,6 +29,7 @@
 | `tabs`  | `ub.vabs`  | `VABS.f32/f16/s16` | f32, f16 | Done |
 | `trelu` | `ub.vrelu` | `VRELU.f32/f16/s32` | f32, f16 | Done |
 | `texp`  | `ub.vexp`  | `VEXP.f32/f16` | f32, f16 | Done |
+| `tlog`  | `ub.vln`   | `VLN.f32/f16` | f32, f16 | Done |
 | `tsqrt` | `ub.vsqrt` | `VSQRT.f32/f16` | f32, f16 | Done |
 | `trsqrt`| `ub.vrsqrt`| `VRSQRT.f32/f16` | f32, f16 | Done (fast-approx) |
 | `tnot`  | `ub.vnot`  | `VNOT.s16/u16` | i16 | Done |
@@ -71,7 +72,7 @@
 63:56  simd flag (=1)
 ```
 
-### Unary Config (VABS/VRELU/VNOT/VEXP/VSQRT/VRSQRT)
+### Unary Config (VABS/VRELU/VNOT/VEXP/VLN/VSQRT/VRSQRT)
 
 ```
 15:0   dst block stride
@@ -173,11 +174,11 @@ See `docs/designs/a2a3-allocator.md` for details.
 
 ## Test Counts
 
-- **58 UB lit tests** (tile-to-UB IR checks + UB-to-LLVM checks + round-trip + planned-address)
+- **60 UB lit tests** (tile-to-UB IR checks + UB-to-LLVM checks + round-trip + planned-address)
 - **192 binary e2e** (f32/f16/i16 binary + bitwise + shift across dispatch-shape matrix, including `taddrelu`)
-- **70 unary e2e** (abs/relu/neg/exp/sqrt/rsqrt/recip across 5 shapes × 2 dtypes)
+- **80 unary e2e** (abs/relu/neg/exp/log/sqrt/rsqrt/recip across 5 shapes × 2 dtypes)
 - **120 scalar binary e2e** (adds/muls/maxs/mins across 5 shapes × 3 scalars × 2 dtypes)
-- **Total confirmed elementwise hardware e2e tests: 382**
+- **Total confirmed elementwise hardware e2e tests: 392**
 
 The PTODSL hardware e2e suite runs the A3 target by default. A2 and A3 share
 the VPTO lowering pipeline, so this validates the A2/A3 lowering path unless

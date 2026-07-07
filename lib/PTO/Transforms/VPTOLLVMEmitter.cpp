@@ -5005,6 +5005,8 @@ public:
       calleeName = "llvm.hivm.VRELU." + elemFrag;
     } else if constexpr (std::is_same_v<UnaryOp, pto::UBVexpOp>)
       calleeName = "llvm.hivm.VEXP." + elemFrag;
+    else if constexpr (std::is_same_v<UnaryOp, pto::UBVlnOp>)
+      calleeName = "llvm.hivm.VLN." + elemFrag;
     else if constexpr (std::is_same_v<UnaryOp, pto::UBVsqrtOp>)
       calleeName = "llvm.hivm.VSQRT." + elemFrag;
     else if constexpr (std::is_same_v<UnaryOp, pto::UBVrsqrtOp>)
@@ -10750,6 +10752,8 @@ static void populateVPTOOpLoweringPatterns(VPTOTypeConverter &typeConverter,
         typeConverter, patterns.getContext(), state);
     patterns.add<LowerUBufUnaryOpPattern<pto::UBVexpOp>>(
         typeConverter, patterns.getContext(), state);
+    patterns.add<LowerUBufUnaryOpPattern<pto::UBVlnOp>>(
+        typeConverter, patterns.getContext(), state);
     patterns.add<LowerUBufUnaryOpPattern<pto::UBVsqrtOp>>(
         typeConverter, patterns.getContext(), state);
     patterns.add<LowerUBufUnaryOpPattern<pto::UBVrsqrtOp>>(
@@ -10905,6 +10909,7 @@ static void configureVPTOOpLoweringTarget(ConversionTarget &target,
     target.addIllegalOp<pto::UBVabsOp>();
     target.addIllegalOp<pto::UBVreluOp>();
     target.addIllegalOp<pto::UBVexpOp>();
+    target.addIllegalOp<pto::UBVlnOp>();
     target.addIllegalOp<pto::UBVsqrtOp>();
     target.addIllegalOp<pto::UBVrsqrtOp>();
     target.addIllegalOp<pto::UBVshlOp>();
