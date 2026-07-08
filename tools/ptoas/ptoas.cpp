@@ -106,6 +106,47 @@ static bool isA2A3Arch(llvm::StringRef arch) {
   return normalized == "a2" || normalized == "a3";
 }
 
+static bool isSupportedPTOASTargetArch(llvm::StringRef arch) {
+  std::string normalized = normalizeArch(arch);
+  return normalized == "a2" || normalized == "a3" || normalized == "a5";
+}
+
+static std::optional<std::string> getModuleTargetArchAttr(ModuleOp module) {
+  auto attr = module->getAttrOfType<mlir::StringAttr>("pto.target_arch");
+  if (!attr)
+    return std::nullopt;
+  std::string arch = normalizeArch(attr.getValue());
+  if (!isSupportedPTOASTargetArch(arch))
+    return std::nullopt;
+  return arch;
+}
+
+static std::string resolveEffectiveTargetArch(ModuleOp module,
+                                              llvm::StringRef fallbackArch) {
+  if (std::optional<std::string> arch = getModuleTargetArchAttr(module))
+    return *arch;
+
+  std::optional<std::string> childArch;
+  for (ModuleOp child : module.getOps<ModuleOp>()) {
+    std::optional<std::string> arch = getModuleTargetArchAttr(child);
+    if (!arch)
+      continue;
+    if (!childArch) {
+      childArch = std::move(arch);
+      continue;
+    }
+    if (*childArch != *arch)
+      return normalizeArch(fallbackArch);
+  }
+  if (childArch)
+    return *childArch;
+
+  std::string fallback = normalizeArch(fallbackArch);
+  if (!isSupportedPTOASTargetArch(fallback))
+    return "a3";
+  return fallback;
+}
+
 } // namespace
 
 int main(int argc, char **argv);
@@ -2592,12 +2633,13 @@ static void lowerPTOToVPTOBackend(PassManager &pm, ModuleOp module, int argc,
 }
 
 static pto::VPTOEmissionOptions
-buildVPTOEmissionOptions(const pto::CANNVersion &cannVersion) {
+buildVPTOEmissionOptions(const pto::CANNVersion &cannVersion,
+                         llvm::StringRef targetArch) {
   pto::VPTOEmissionOptions options;
   options.dumpVPTOIR = false;
   options.targetTriple = "hiipu64-hisilicon-cce";
   options.cannVersion = cannVersion;
-  std::string arch = normalizeArch(ptoTargetArch);
+  std::string arch = normalizeArch(targetArch);
   options.march = isA2A3Arch(arch) ? "dav-c220-vec" : "dav-c310-vec";
   return options;
 }
@@ -2616,7 +2658,9 @@ static int emitVPTOBackendResult(ModuleOp module, PTOASCompileResult &result,
 
   if (emitVPTOLLVMDialect) {
     result.kind = PTOASCompileResultKind::Text;
-    pto::VPTOEmissionOptions options = buildVPTOEmissionOptions(cannVersion);
+    pto::VPTOEmissionOptions options =
+        buildVPTOEmissionOptions(
+            cannVersion, resolveEffectiveTargetArch(module, ptoTargetArch));
     if (failed(pto::lowerVPTOModuleToLLVMIRText(
             module, options, result.textOutput, llvm::errs()))) {
       llvm::errs() << "Error: Failed to lower VPTO to LLVM IR.\n";
@@ -2625,7 +2669,9 @@ static int emitVPTOBackendResult(ModuleOp module, PTOASCompileResult &result,
     return 0;
   }
 
-  pto::VPTOEmissionOptions options = buildVPTOEmissionOptions(cannVersion);
+  pto::VPTOEmissionOptions options =
+      buildVPTOEmissionOptions(
+          cannVersion, resolveEffectiveTargetArch(module, ptoTargetArch));
   std::string stubSource;
   if (emitHostStub) {
     if (failed(pto::emitVPTOHostStubSource(module, stubSource, llvm::errs()))) {
@@ -2673,7 +2719,7 @@ int mlir::pto::compilePTOASModule(
     PTOBackend effectiveBackend, PTOASCompileResult &result,
     bool emitVPTOHostStub) {
   result.reset();
-  llvm::StringRef arch = context.getArch();
+  std::string arch = resolveEffectiveTargetArch(*module, context.getArch());
   int argc = context.getArgc();
   char **argv = context.getArgv();
 
@@ -2864,37 +2910,6 @@ int mlir::pto::compilePTOASModule(
                                  context.getCANNVersionOrDefault());
   }
 
-  // When the module has nested child builtin.module ops (BACKEND_PARTITIONED
-  // or NESTED PTODSL layout), flatten them into the outer module so that
-  // FuncOp-level passes (InsertSync, InjectBarrierAllSync, etc.) can reach
-  // the functions.  addNestedPass<FuncOp> does not descend into child
-  // builtin.module ops.
-  {
-    SmallVector<ModuleOp> childModules;
-    for (ModuleOp child : module->getOps<ModuleOp>())
-      childModules.push_back(child);
-    for (ModuleOp child : childModules) {
-      // Copy child module attributes to outer (skip pto.backend which is
-      // already set on the outer module by the backend job).
-      for (NamedAttribute attr : child->getAttrs()) {
-        StringRef attrName = attr.getName().getValue();
-        if (attrName == "pto.backend" || attrName == "sym_name")
-          continue;
-        Operation *outerOp = module->getOperation();
-        if (!outerOp->hasAttr(attrName))
-          outerOp->setAttr(attr.getName(), attr.getValue());
-      }
-      // Move all ops from child into outer.
-      Block *childBody = child.getBody();
-      Block *outerBody = module->getBody();
-      while (!childBody->empty()) {
-        Operation &op = childBody->front();
-        op.moveBefore(outerBody, outerBody->end());
-      }
-      child.erase();
-    }
-  }
-
   // Main PassManager
   PassManager pm(module->getContext());
 
@@ -2921,7 +2936,7 @@ int mlir::pto::compilePTOASModule(
   // PTOViewToMemref is generic view lowering required by both backends; keep it
   // outside the local-memory planning gate so default A2/A3 EmitC still lowers
   // pto.make_tensor_view before backend legalization.
-  const bool isA2A3 = isA2A3Arch(ptoTargetArch);
+  const bool isA2A3 = isA2A3Arch(arch);
   if (!isA2A3)
     pm.addNestedPass<mlir::func::FuncOp>(pto::createPTOA5NormalizeTMovPass());
   pm.addNestedPass<mlir::func::FuncOp>(
