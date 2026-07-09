@@ -132,6 +132,10 @@ attrs like `candidates` or other mode fields.
 - `TCmpSOp` in `PTOViewToMemref.cpp`
   - manual recreation dropped attrs
   - fix: use the cloned-attrs replacement helper
+- `TMatmul*` / `TGemv*` variants in `PTOViewToMemref.cpp`
+  - plain `tmatmul` preserved attrs, but `.acc`, `.bias`, `.mx`, and GEMV
+    variants were recreated without `candidates`
+  - fix: use the cloned-attrs replacement helper for the variant rewrites too
 
 ### 5. Callable form mismatch with TileLang/ST
 

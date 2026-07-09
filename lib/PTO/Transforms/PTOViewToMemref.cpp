@@ -2522,8 +2522,8 @@ struct PTOViewToMemrefPass
       for (auto op : matmulAccs) {
         IRRewriter rewriter(ctx);
         rewriter.setInsertionPoint(op);
-        rewriter.replaceOpWithNewOp<pto::TMatmulAccOp>(
-          op, TypeRange{}, 
+        replaceOpWithClonedAttrs<pto::TMatmulAccOp>(
+          rewriter, op, TypeRange{},
           op->getOperand(0), op->getOperand(1),
           op->getOperand(kThirdOperandIndex),
           op->getOperand(kFourthOperandIndex), op.getAccPhaseAttr());
@@ -2535,8 +2535,8 @@ struct PTOViewToMemrefPass
       for (auto op : matmulBiass) {
         IRRewriter rewriter(ctx);
         rewriter.setInsertionPoint(op);
-        rewriter.replaceOpWithNewOp<pto::TMatmulBiasOp>(
-          op, TypeRange{}, 
+        replaceOpWithClonedAttrs<pto::TMatmulBiasOp>(
+          rewriter, op, TypeRange{},
           op->getOperand(0), op->getOperand(1),
           op->getOperand(kThirdOperandIndex),
           op->getOperand(kFourthOperandIndex), op.getAccPhaseAttr());
@@ -2548,8 +2548,8 @@ struct PTOViewToMemrefPass
       for (auto op : matmulMxs) {
         IRRewriter rewriter(ctx);
         rewriter.setInsertionPoint(op);
-        rewriter.replaceOpWithNewOp<pto::TMatmulMxOp>(
-          op, TypeRange{}, 
+        replaceOpWithClonedAttrs<pto::TMatmulMxOp>(
+          rewriter, op, TypeRange{},
           op->getOperand(0), op->getOperand(1),
           op->getOperand(kThirdOperandIndex),
           op->getOperand(kFourthOperandIndex),
@@ -2562,8 +2562,8 @@ struct PTOViewToMemrefPass
       for (auto op : matmulMxAccs) {
         IRRewriter rewriter(ctx);
         rewriter.setInsertionPoint(op);
-        rewriter.replaceOpWithNewOp<pto::TMatmulMxAccOp>(
-          op, TypeRange{}, 
+        replaceOpWithClonedAttrs<pto::TMatmulMxAccOp>(
+          rewriter, op, TypeRange{},
           op->getOperand(0), op->getOperand(1),
           op->getOperand(kThirdOperandIndex),
           op->getOperand(kFourthOperandIndex),
@@ -2577,8 +2577,8 @@ struct PTOViewToMemrefPass
       for (auto op : matmulMxBiass) {
         IRRewriter rewriter(ctx);
         rewriter.setInsertionPoint(op);
-        rewriter.replaceOpWithNewOp<pto::TMatmulMxBiasOp>(
-          op, TypeRange{}, 
+        replaceOpWithClonedAttrs<pto::TMatmulMxBiasOp>(
+          rewriter, op, TypeRange{},
           op->getOperand(0), op->getOperand(1),
           op->getOperand(kThirdOperandIndex),
           op->getOperand(kFourthOperandIndex),
@@ -2597,8 +2597,8 @@ struct PTOViewToMemrefPass
         Value rhs = op->getOperand(1);
         Value dst = op->getOperand(kThirdOperandIndex);
 
-        rewriter.replaceOpWithNewOp<pto::TGemvOp>(
-          op, TypeRange{}, lhs, rhs, dst, op.getAccPhaseAttr());
+        replaceOpWithClonedAttrs<pto::TGemvOp>(
+          rewriter, op, TypeRange{}, lhs, rhs, dst, op.getAccPhaseAttr());
       }
 
       // --- TGemvAccOp [Acc, Lhs, Rhs, Dst] ---
@@ -2607,8 +2607,8 @@ struct PTOViewToMemrefPass
       for (auto op : gemvAccs) {
         IRRewriter rewriter(ctx);
         rewriter.setInsertionPoint(op);
-        rewriter.replaceOpWithNewOp<pto::TGemvAccOp>(
-          op, TypeRange{}, 
+        replaceOpWithClonedAttrs<pto::TGemvAccOp>(
+          rewriter, op, TypeRange{},
           op->getOperand(0), op->getOperand(1),
           op->getOperand(kThirdOperandIndex),
           op->getOperand(kFourthOperandIndex), op.getAccPhaseAttr());
@@ -2620,8 +2620,8 @@ struct PTOViewToMemrefPass
       for (auto op : gemvBiass) {
         IRRewriter rewriter(ctx);
         rewriter.setInsertionPoint(op);
-        rewriter.replaceOpWithNewOp<pto::TGemvBiasOp>(
-          op, TypeRange{}, 
+        replaceOpWithClonedAttrs<pto::TGemvBiasOp>(
+          rewriter, op, TypeRange{},
           op->getOperand(0), op->getOperand(1),
           op->getOperand(kThirdOperandIndex),
           op->getOperand(kFourthOperandIndex), op.getAccPhaseAttr());
@@ -2633,8 +2633,8 @@ struct PTOViewToMemrefPass
       for (auto op : gemvMxs) {
         IRRewriter rewriter(ctx);
         rewriter.setInsertionPoint(op);
-        rewriter.replaceOpWithNewOp<pto::TGemvMxOp>(
-          op, TypeRange{},
+        replaceOpWithClonedAttrs<pto::TGemvMxOp>(
+          rewriter, op, TypeRange{},
           op->getOperand(0), op->getOperand(1),
           op->getOperand(kThirdOperandIndex),
           op->getOperand(kFourthOperandIndex),
@@ -2647,8 +2647,8 @@ struct PTOViewToMemrefPass
       for (auto op : gemvMxAccs) {
         IRRewriter rewriter(ctx);
         rewriter.setInsertionPoint(op);
-        rewriter.replaceOpWithNewOp<pto::TGemvMxAccOp>(
-          op, TypeRange{},
+        replaceOpWithClonedAttrs<pto::TGemvMxAccOp>(
+          rewriter, op, TypeRange{},
           op->getOperand(0), op->getOperand(1),
           op->getOperand(kThirdOperandIndex),
           op->getOperand(kFourthOperandIndex),
@@ -2662,8 +2662,8 @@ struct PTOViewToMemrefPass
       for (auto op : gemvMxBiass) {
         IRRewriter rewriter(ctx);
         rewriter.setInsertionPoint(op);
-        rewriter.replaceOpWithNewOp<pto::TGemvMxBiasOp>(
-          op, TypeRange{},
+        replaceOpWithClonedAttrs<pto::TGemvMxBiasOp>(
+          rewriter, op, TypeRange{},
           op->getOperand(0), op->getOperand(1),
           op->getOperand(kThirdOperandIndex),
           op->getOperand(kFourthOperandIndex),
