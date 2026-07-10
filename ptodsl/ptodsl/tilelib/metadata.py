@@ -208,9 +208,9 @@ class ViewSpec:
     def mlir_type(self):
         dims = "x".join("?" if dim is None else str(dim) for dim in self.shape)
         addr_space = _memref_address_space_token(self.memory_space)
-        dtype = _scalar_type_token(self.dtype)
+        elem = _resolve(scalar_descriptor(self.dtype))
         return Type.parse(
-            f"memref<{dims}x{dtype}, #pto.address_space<{addr_space}>>"
+            f"memref<{dims}x{elem}, #pto.address_space<{addr_space}>>"
         )
 
 
@@ -223,7 +223,8 @@ class VectorSpec:
 
     def mlir_type(self):
         dims = "x".join(str(dim) for dim in self.shape)
-        return Type.parse(f"vector<{dims}x{_scalar_type_token(self.dtype)}>")
+        elem = _resolve(scalar_descriptor(self.dtype))
+        return Type.parse(f"vector<{dims}x{elem}>")
 
 
 def _memref_address_space_token(value: str) -> str:

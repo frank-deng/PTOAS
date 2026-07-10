@@ -10,8 +10,18 @@
 from ._common import NUMERIC_DTYPES
 
 
-LOW_PRECISION_STORAGE_DTYPES = ("f8e4m3", "hif8")
-LOAD_STORE_DTYPES = tuple((dtype, dtype) for dtype in NUMERIC_DTYPES + LOW_PRECISION_STORAGE_DTYPES)
+INTEGER_LOAD_STORE_DTYPES = (
+    "i64",
+    "si8",
+    "si16",
+    "si32",
+    "si64",
+    "ui64",
+)
+LOW_PRECISION_LOAD_STORE_DTYPES = ("f8e4m3", "f8e5m2", "hif8", "f4e1m2x2", "f4e2m1x2")
+LOAD_STORE_DTYPES = tuple(
+    (dtype, dtype) for dtype in NUMERIC_DTYPES + INTEGER_LOAD_STORE_DTYPES + LOW_PRECISION_LOAD_STORE_DTYPES
+)
 MAT_LOAD_DTYPES = (("f16", "f16"), ("bf16", "bf16"), ("f32", "f32"))
 ACC_STORE_DTYPES = (
     ("f32", "f32"),

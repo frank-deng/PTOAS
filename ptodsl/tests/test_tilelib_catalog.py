@@ -740,10 +740,37 @@ class TileLibCatalogTest(unittest.TestCase):
             ("bf16", "f16"): "template_tcvt_bf16_to_f16",
             ("f32", "f16"): "template_tcvt_f32_to_f16",
             ("f32", "bf16"): "template_tcvt_f32_to_bf16",
+            ("f32", "i16"): "template_tcvt_f32_to_i16",
+            ("f32", "i64"): "template_tcvt_f32_to_i64",
+            ("f32", "f32"): "template_tcvt_f32_to_f32",
             ("f16", "i32"): "template_tcvt_f16_to_i32",
             ("f16", "f32"): "template_tcvt_f16_to_f32",
+            ("f16", "ui8"): "template_tcvt_f16_to_ui8",
+            ("f16", "si8"): "template_tcvt_f16_to_si8",
+            ("bf16", "f32"): "template_tcvt_bf16_to_f32",
             ("bf16", "i32"): "template_tcvt_bf16_to_i32",
+            ("ui8", "f16"): "template_tcvt_ui8_to_f16",
             ("ui8", "ui16"): "template_tcvt_ui8_to_ui16",
+            ("si8", "f16"): "template_tcvt_si8_to_f16",
+            ("si8", "si16"): "template_tcvt_si8_to_si16",
+            ("si8", "i32"): "template_tcvt_si8_to_i32",
+            ("i16", "ui8"): "template_tcvt_i16_to_ui8",
+            ("i16", "f32"): "template_tcvt_i16_to_f32",
+            ("i16", "ui32"): "template_tcvt_i16_to_ui32",
+            ("i16", "i32"): "template_tcvt_i16_to_i32",
+            ("i32", "i64"): "template_tcvt_i32_to_i64",
+            ("i32", "i16"): "template_tcvt_i32_to_i16",
+            ("i32", "ui8"): "template_tcvt_i32_to_ui8",
+            ("i32", "ui16"): "template_tcvt_i32_to_ui16",
+            ("ui32", "i16"): "template_tcvt_ui32_to_i16",
+            ("ui32", "ui16"): "template_tcvt_ui32_to_ui16",
+            ("ui32", "ui8"): "template_tcvt_ui32_to_ui8",
+            ("i64", "f32"): "template_tcvt_i64_to_f32",
+            ("i64", "i32"): "template_tcvt_i64_to_i32",
+            ("f32", "f8e4m3"): "template_tcvt_f32_to_fp8",
+            ("f32", "f8e5m2"): "template_tcvt_f32_to_fp8",
+            ("f32", "hif8"): "template_tcvt_f32_to_hif8",
+            ("f16", "hif8"): "template_tcvt_f16_to_hif8",
         }
         for (src_dtype, dst_dtype), expected_name in signatures.items():
             with self.subTest(signature=(src_dtype, dst_dtype)):
@@ -753,6 +780,18 @@ class TileLibCatalogTest(unittest.TestCase):
                 }
                 selected = select("pto.tcvt", "a5", specs)
                 self.assertEqual(selected.name, expected_name)
+                expected_op = "pto.vtrc" if expected_name == "template_tcvt_f32_to_f32" else "pto.vcvt"
+                self.assertIn(expected_op, selected.specialize(**specs).mlir_text())
+
+    def test_tcvt_bf16_to_fp4_versions_render(self):
+        for dst_dtype in ("f4e1m2x2", "f4e2m1x2"):
+            with self.subTest(dst_dtype=dst_dtype):
+                specs = {
+                    "src": TileSpec(shape=(8, 128), dtype=ScalarType("bf16")),
+                    "dst": TileSpec(shape=(8, 64), dtype=ScalarType(dst_dtype)),
+                }
+                selected = select("pto.tcvt", "a5", specs)
+                self.assertEqual(selected.name, "template_tcvt_bf16_to_fp4")
                 self.assertIn("pto.vcvt", selected.specialize(**specs).mlir_text())
 
     def test_tcolexpanddiv_i32_uses_float_divide_path(self):
@@ -1032,6 +1071,24 @@ class TileLibCatalogTest(unittest.TestCase):
                 selected = select("pto.tstore", "a5", specs)
                 self.assertEqual(selected.name, expected_name)
                 self.assertIn(expected_op, selected.specialize(**specs).mlir_text())
+
+    def test_tstore_nd_accepts_low_precision_tiles(self):
+        for dtype in ("f8e4m3", "hif8", "f4e1m2x2", "i64"):
+            with self.subTest(dtype=dtype):
+                specs = {
+                    "src": TileSpec(
+                        shape=(8, 64),
+                        dtype=ScalarType(dtype),
+                    ),
+                    "dst": ViewSpec(
+                        shape=(1, 1, 1, 8, 64),
+                        dtype=ScalarType(dtype),
+                        strides=(512, 512, 512, 64, 1),
+                    ),
+                }
+                selected = select("pto.tstore", "a5", specs)
+                self.assertEqual(selected.name, "template_tstore_nd")
+                self.assertIn("pto.mte_ub_gm", selected.specialize(**specs).mlir_text())
 
     def test_textract_fp_versions_render(self):
         signatures = {
