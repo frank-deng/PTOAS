@@ -49,24 +49,30 @@ def register_col_arg_template(*, op, name, cmp_mode, reduce_op):
     def template(src: pto.Tile, tmp: pto.Tile, dst: pto.Tile):
         _ = tmp
         src_valid_rows, src_valid_cols = src.valid_shape
+        src_cols = src.shape[1]
+        src_ptr = src.as_ptr()
+        dst_ptr = dst.as_ptr()
         lanes = pto.elements_per_vreg(src.dtype)
-        full_mask = pto.make_mask(src.dtype, pto.PAT.ALL)
 
+        full_mask = pto.make_mask(src.dtype, pto.PAT.ALL)
         for col in range(0, src_valid_cols, lanes):
             remained = src_valid_cols - col
             mask, _ = pto.make_mask(src.dtype, remained)
             index_old = pto.vdup(pto.i32(0), mask)
             index_new = pto.vdup(pto.i32(0), mask)
-            best_vals = pto.vlds(src[0, col:])
+            src_addr = pto.addptr(src_ptr, col)
+            best_vals = pto.vlds(src_addr, 0)
 
             for row in range(1, src_valid_rows, 1):
                 index_new = pto.vadds(index_new, pto.i32(1), mask)
-                new_vals = pto.vlds(src[row, col:])
+                src_addr = pto.addptr(src_ptr, row * src_cols + col)
+                new_vals = pto.vlds(src_addr, 0)
                 select = pto.vcmp(new_vals, best_vals, full_mask, cmp_mode)
                 index_old = pto.vsel(index_new, index_old, select)
                 best_vals = reduce_op(best_vals, new_vals, mask)
 
-            pto.vsts(index_old, dst[0, col:], mask)
+            dst_addr = pto.addptr(dst_ptr, col)
+            pto.vsts(index_old, dst_addr, 0, mask)
 
     @tilelib.tile_template(
         op=op,

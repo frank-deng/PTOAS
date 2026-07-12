@@ -58,7 +58,8 @@ def template_tsels(mask: pto.Tile, src: pto.Tile, tmp: pto.Tile, scalar, dst: pt
     lanes = pto.elements_per_vreg(dtype)
     mask_ptr = pto.castptr(mask.as_ptr(), pto.ptr(pto.ui8, "ub"))
     mask_stride = mask.shape[1] * pto.bytewidth(mask.dtype)
-    scalar_vec = pto.vbr(scalar)
+    full_mask, _ = pto.make_mask(dtype, lanes)
+    scalar_vec = pto.vdup(scalar, full_mask)
 
     if lanes == 64:
         full_mask_b16 = pto.pset_b16(pto.PAT.ALL)

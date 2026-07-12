@@ -263,14 +263,17 @@ def register_scalar_fill(*, op, name, dtypes):
     def template(scalar, dst: pto.Tile):
         dtype = dst.dtype
         valid_rows, valid_cols = dst.valid_shape
+        cols = dst.shape[1]
         lanes = pto.elements_per_vreg(dtype)
+        dst_ptr = dst.as_ptr()
 
         for row in range(0, valid_rows, 1):
             remained = valid_cols
             for col in range(0, valid_cols, lanes):
                 mask, remained = pto.make_mask(dtype, remained)
                 value = pto.vdup(scalar, mask)
-                pto.vsts(value, dst[row, col:], mask)
+                addr = pto.addptr(dst_ptr, row * cols + col)
+                pto.vsts(value, addr, 0, mask)
 
     return template
 

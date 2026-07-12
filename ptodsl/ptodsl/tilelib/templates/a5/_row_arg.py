@@ -64,6 +64,10 @@ def register_row_arg(*, op, name, reduce_op, cmp_mode):
         src_dtype = src.dtype
         idx_dtype = dst.dtype
         valid_rows, valid_cols = src.valid_shape
+        src_cols = src.shape[1]
+        dst_cols = dst.shape[1]
+        src_ptr = src.as_ptr()
+        dst_ptr = dst.as_ptr()
         lanes = pto.elements_per_vreg(src_dtype)
         src_one_mask, _ = pto.make_mask(src_dtype, 1)
         idx_one_mask, _ = pto.make_mask(idx_dtype, 1)
@@ -77,7 +81,8 @@ def register_row_arg(*, op, name, reduce_op, cmp_mode):
 
             for col in range(0, valid_cols, lanes):
                 mask, remained = pto.make_mask(src_dtype, remained)
-                value = pto.vlds(src[row, col:])
+                src_addr = pto.addptr(src_ptr, row * src_cols + col)
+                value = pto.vlds(src_addr, 0)
                 reduced = reduce_op(value, mask)
                 val, idx_src = pto.vdintlv(reduced, zero_src)
                 idx = pto.vbitcast(idx_src, idx_dtype)
@@ -87,7 +92,8 @@ def register_row_arg(*, op, name, reduce_op, cmp_mode):
                 val_acc = pto.vsel(val, val_acc, cmp)
                 idx_acc = pto.vsel(idx, idx_acc, cmp_idx)
 
-            pto.vsts(idx_acc, dst[row, 0:], idx_one_mask, dist=element_store_dist(idx_dtype))
+            dst_addr = pto.addptr(dst_ptr, row * dst_cols)
+            pto.vsts(idx_acc, dst_addr, 0, idx_one_mask, dist=element_store_dist(idx_dtype))
 
     return template
 

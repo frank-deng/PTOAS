@@ -56,7 +56,7 @@ def _fill_scalar(dst):
     dtype = dst.dtype
     pad_value = str(getattr(dst, "pad_value", "Null")).lower()
     if str(dtype) == "f32" and pad_value in {"zero", "0x1", "0x01"}:
-        return pto.f32(-1.0)
+        return pto.f32(0.0)
     if pad_value in {"max", "0x2", "0x02"}:
         return _max(dtype)
     if pad_value in {"min", "0x3", "0x03"}:
@@ -128,6 +128,8 @@ def _scalar_tail_start(dst, lanes):
 def _fill(dst, row_start, row_stop, col_start, col_stop, scalar_tail_start=None):
     dtype = dst.dtype
     lanes = pto.elements_per_vreg(dtype)
+    cols = dst.shape[1]
+    dst_ptr = dst.as_ptr()
     fill_scalar = _fill_scalar(dst)
     vector_col_stop = scalar_tail_start if scalar_tail_start is not None else col_stop
     with pto.for_(row_start, row_stop, step=1) as row:
@@ -137,7 +139,8 @@ def _fill(dst, row_start, row_stop, col_start, col_stop, scalar_tail_start=None)
             col = col_loop.iv
             mask, remained = pto.make_mask(dtype, remained)
             vec = pto.vdup(fill_scalar, mask)
-            pto.vsts(vec, dst[row, col:], mask)
+            addr = pto.addptr(dst_ptr, row * cols + col)
+            pto.vsts(vec, addr, 0, mask)
             col_loop.update(remained=remained)
         if scalar_tail_start is not None:
             with pto.for_(scalar_tail_start, col_stop, step=1) as col:

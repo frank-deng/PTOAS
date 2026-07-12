@@ -8,14 +8,36 @@
 """PTODSL TileLib template for pto.tsubs."""
 
 from ptodsl import pto
+import ptodsl.tilelib as tilelib
 
 from ._common import same_dtype_signatures
-from ._elementwise import register_scalar_binary
+from ._elementwise import _common_constraints
 
 
-template_tsubs = register_scalar_binary(
+@tilelib.tile_template(
     op="pto.tsubs",
+    target="a5",
     name="template_tsubs",
-    vector_op=pto.vsubs,
     dtypes=same_dtype_signatures(3),
+    iteration_axis="none",
+    op_engine="vector",
+    op_class="elementwise",
+    constraints=_common_constraints("src", "dst"),
+    id=0,
+    loop_depth=2,
+    is_post_update=False,
+    tags=("elementwise", "scalar"),
 )
+def template_tsubs(src: pto.Tile, scalar, dst: pto.Tile):
+    dtype = dst.dtype
+    valid_rows, valid_cols = dst.valid_shape
+    lanes = pto.elements_per_vreg(dtype)
+
+    for row in range(0, valid_rows, 1):
+        remained = valid_cols
+        for col in range(0, valid_cols, lanes):
+            mask, remained = pto.make_mask(dtype, remained)
+            value = pto.vlds(src[row, col:])
+            scalar_value = pto.vbr(scalar)
+            result = pto.vsub(value, scalar_value, mask)
+            pto.vsts(result, dst[row, col:], mask)

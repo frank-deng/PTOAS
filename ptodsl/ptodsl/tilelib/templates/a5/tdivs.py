@@ -39,19 +39,25 @@ def _div(lhs, rhs, dtype, mask, precision_type):
 def _emit_tdivs_body(src, scalar, dst, *, scalar_lhs=False):
     dtype = dst.dtype
     valid_rows, valid_cols = dst.valid_shape
+    src_cols = src.shape[1]
+    dst_cols = dst.shape[1]
     lanes = pto.elements_per_vreg(dtype)
     precision_type = pto.get_op_attr("precisionType", "default")
+    src_ptr = src.as_ptr()
+    dst_ptr = dst.as_ptr()
 
     with pto.for_(0, valid_rows, step=1) as row:
         col_loop = pto.for_(0, valid_cols, step=lanes).carry(remained=valid_cols)
         with col_loop:
             col = col_loop.iv
             mask, remained = pto.make_mask(dtype, col_loop.remained)
-            value = pto.vlds(src[row, col:])
+            src_addr = pto.addptr(src_ptr, row * src_cols + col)
+            value = pto.vlds(src_addr, 0)
             scalar_value = pto.vbr(scalar)
             lhs, rhs = (scalar_value, value) if scalar_lhs else (value, scalar_value)
             result = _div(lhs, rhs, dtype, mask, precision_type)
-            pto.vsts(result, dst[row, col:], mask)
+            dst_addr = pto.addptr(dst_ptr, row * dst_cols + col)
+            pto.vsts(result, dst_addr, 0, mask)
             col_loop.update(remained=remained)
 
 

@@ -197,7 +197,7 @@ CATALOG = {
         "i32",
     ),
     "pto.txors": ("template_txors", "pto.vxor", ("src", "scalar", "tmp", "dst"), "i32"),
-    "pto.tsubs": ("template_tsubs", "pto.vadds", ("src", "scalar", "dst"), "f32"),
+    "pto.tsubs": ("template_tsubs", "pto.vsub", ("src", "scalar", "dst"), "f32"),
     "pto.tsub": ("template_tsub", "pto.vsub", ("src0", "src1", "dst"), "f32"),
     "pto.tsqrt": ("template_tsqrt", "pto.vsqrt", ("src", "dst"), "f32"),
 }
@@ -266,7 +266,10 @@ OPS_WITHOUT_VECTOR_STORE = {"pto.tcmp", "pto.tcmps", "pto.tsort32"}
 OPS_WITHOUT_VECTOR_STORE = OPS_WITHOUT_VECTOR_STORE | {"pto.tload", "pto.tstore", "pto.tstore_fp", "pto.textract_fp"}
 OPS_WITHOUT_VECTOR_STORE = OPS_WITHOUT_VECTOR_STORE | CUBE_OPS
 OPS_WITHOUT_MEMREF_SUBVIEW = {"pto.tcmps", "pto.tsort32"}
+OPS_WITHOUT_MEMREF_SUBVIEW = OPS_WITHOUT_MEMREF_SUBVIEW | {"pto.texpands", "pto.tdivs", "pto.tfillpad_inplace"}
 OPS_WITHOUT_MEMREF_SUBVIEW = OPS_WITHOUT_MEMREF_SUBVIEW | {"pto.tload", "pto.tstore", "pto.tstore_fp", "pto.textract_fp"}
+OPS_WITHOUT_MEMREF_SUBVIEW = OPS_WITHOUT_MEMREF_SUBVIEW | ROW_REDUCTIONS
+OPS_WITHOUT_MEMREF_SUBVIEW = OPS_WITHOUT_MEMREF_SUBVIEW | ARG_COLUMN_REDUCTIONS
 OPS_WITHOUT_MEMREF_SUBVIEW = OPS_WITHOUT_MEMREF_SUBVIEW | CUBE_OPS
 OPS_WITHOUT_LOOP = {"pto.tmrgsort"}
 OPS_WITHOUT_LOOP = OPS_WITHOUT_LOOP | {"pto.tstore_fp", "pto.textract_fp"}
@@ -495,6 +498,130 @@ class TileLibCatalogTest(unittest.TestCase):
                 if op not in OPS_ALLOWING_CASTPTR:
                     self.assertNotIn("pto.castptr", mlir)
 
+    def test_rank2_row_major_load_store_views_render(self):
+        load_specs = {
+            "src": ViewSpec(
+                shape=(None, None),
+                dtype=ScalarType("f32"),
+                memory_space="gm",
+                strides=(None, 1),
+            ),
+            "dst": TileSpec(
+                shape=(1, 128),
+                dtype=ScalarType("f32"),
+                memory_space="ub",
+                valid_shape=(1, 128),
+            ),
+        }
+        selected_load = select("pto.tload", "a5", load_specs)
+        self.assertEqual(selected_load.name, "template_tload_nd2nd")
+        load_mlir = selected_load.specialize(**load_specs).mlir_text()
+        self.assertIn("pto.mte_gm_ub", load_mlir)
+
+        store_specs = {
+            "src": TileSpec(
+                shape=(1, 128),
+                dtype=ScalarType("f32"),
+                memory_space="ub",
+                valid_shape=(1, 128),
+            ),
+            "dst": ViewSpec(
+                shape=(None, None),
+                dtype=ScalarType("f32"),
+                memory_space="gm",
+                strides=(None, 1),
+            ),
+        }
+        selected_store = select("pto.tstore", "a5", store_specs)
+        self.assertEqual(selected_store.name, "template_tstore_nd")
+        store_mlir = selected_store.specialize(**store_specs).mlir_text()
+        self.assertIn("pto.mte_ub_gm", store_mlir)
+
+    def test_tstore_accepts_dynamic_valid_shape_metadata(self):
+        dynamic_dim = -(2**63)
+        for valid_shape in ((-1, -1), (None, None), (dynamic_dim, dynamic_dim)):
+            with self.subTest(valid_shape=valid_shape):
+                specs = {
+                    "src": TileSpec(
+                        shape=(32, 32),
+                        dtype=ScalarType("f32"),
+                        memory_space="ub",
+                        valid_shape=valid_shape,
+                    ),
+                    "dst": ViewSpec(
+                        shape=(1, 1, 1, 32, 32),
+                        dtype=ScalarType("f32"),
+                        memory_space="gm",
+                        strides=(1024, 1024, 1024, 32, 1),
+                    ),
+                }
+                selected = select("pto.tstore", "a5", specs)
+                self.assertEqual(selected.name, "template_tstore_nd")
+
+    def test_row_expand_accepts_col_major_single_column_broadcast(self):
+        for op, expected_op in (
+            ("pto.trowexpandmul", "pto.vmul"),
+            ("pto.trowexpandsub", "pto.vsub"),
+        ):
+            with self.subTest(op=op):
+                specs = {
+                    "src0": TileSpec(
+                        shape=(16, 64),
+                        dtype=ScalarType("f32"),
+                        memory_space="vec",
+                        valid_shape=(-(2**63), -(2**63)),
+                    ),
+                    "src1": TileSpec(
+                        shape=(16, 1),
+                        dtype=ScalarType("f32"),
+                        memory_space="vec",
+                        valid_shape=(-(2**63), -(2**63)),
+                        b_layout="col_major",
+                        s_layout="row_major",
+                    ),
+                    "dst": TileSpec(
+                        shape=(16, 64),
+                        dtype=ScalarType("f32"),
+                        memory_space="vec",
+                        valid_shape=(-(2**63), -(2**63)),
+                    ),
+                }
+                selected = select(op, "a5", specs)
+                self.assertIn(expected_op, selected.specialize(**specs).mlir_text())
+
+    def test_row_reductions_accept_col_major_single_column_output(self):
+        for op, expected_op in (
+            ("pto.trowmax", "pto.vcmax"),
+            ("pto.trowmin", "pto.vcmin"),
+            ("pto.trowsum", "pto.vcadd"),
+            ("pto.trowprod", "pto.vintlv"),
+        ):
+            with self.subTest(op=op):
+                specs = {
+                    "src": TileSpec(
+                        shape=(16, 128),
+                        dtype=ScalarType("f32"),
+                        memory_space="vec",
+                        valid_shape=(-(2**63), -(2**63)),
+                    ),
+                    "tmp": TileSpec(
+                        shape=(16, 128),
+                        dtype=ScalarType("f32"),
+                        memory_space="vec",
+                        valid_shape=(-(2**63), -(2**63)),
+                    ),
+                    "dst": TileSpec(
+                        shape=(16, 1),
+                        dtype=ScalarType("f32"),
+                        memory_space="vec",
+                        valid_shape=(-(2**63), -(2**63)),
+                        b_layout="col_major",
+                        s_layout="row_major",
+                    ),
+                }
+                selected = select(op, "a5", specs)
+                self.assertIn(expected_op, selected.specialize(**specs).mlir_text())
+
     def test_declared_dtype_signatures_are_selectable(self):
         for op, entry in CATALOG.items():
             _, _, parameter_names, representative_dtype, candidate_id = _entry_parts(entry)
@@ -566,7 +693,7 @@ class TileLibCatalogTest(unittest.TestCase):
             ("pto.tshr", ("src0", "src1", "dst"), "ui16", "pto.vshr"),
             ("pto.tshrs", ("src", "scalar", "dst"), "ui32", "pto.vshrs"),
             ("pto.tsub", ("src0", "src1", "dst"), "i16", "pto.vsub"),
-            ("pto.tsubs", ("src", "scalar", "dst"), "ui16", "pto.vadds"),
+            ("pto.tsubs", ("src", "scalar", "dst"), "ui16", "pto.vsub"),
             ("pto.txor", ("src0", "src1", "tmp", "dst"), "ui32", "pto.vxor"),
             ("pto.txors", ("src", "scalar", "tmp", "dst"), "ui16", "pto.vxor"),
         )
@@ -1187,6 +1314,10 @@ class TileLibCatalogTest(unittest.TestCase):
             ("f32", "f32", "i32", "i32", "f16"): "template_textract_fp_f32_f16",
             ("f32", "f32", "i32", "i32", "bf16"): "template_textract_fp_f32_bf16",
             ("f32", "f32", "i32", "i32", "f32"): "template_textract_fp_f32_f32",
+            ("si32", "f32", "i32", "i32", "si8"): "template_textract_fp_si32_si8",
+            ("si32", "f32", "i32", "i32", "ui8"): "template_textract_fp_si32_ui8",
+            ("si32", "f32", "i32", "i32", "f16"): "template_textract_fp_si32_f16",
+            ("si32", "f32", "i32", "i32", "bf16"): "template_textract_fp_si32_bf16",
             ("i32", "f32", "i32", "i32", "si8"): "template_textract_fp_si32_si8",
             ("i32", "f32", "i32", "i32", "ui8"): "template_textract_fp_si32_ui8",
             ("i32", "f32", "i32", "i32", "f16"): "template_textract_fp_si32_f16",

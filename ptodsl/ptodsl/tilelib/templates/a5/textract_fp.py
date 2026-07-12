@@ -22,12 +22,15 @@ def _textract_fp_constraint(src_kind, src_memory_space, fp_kind, fp_memory_space
     )
 
 
-def _register_textract_fp(name, signature, quant_mode, template_id):
+def _register_textract_fp(name, signatures, quant_mode, template_id):
+    if isinstance(signatures, tuple) and signatures and isinstance(signatures[0], str):
+        signatures = (signatures,)
+
     @tilelib.tile_template(
         op="pto.textract_fp",
         target="a5",
         name=name,
-        dtypes=(signature,),
+        dtypes=tuple(signatures),
         iteration_axis="none",
         op_engine="other",
         op_class="movement",
@@ -39,8 +42,11 @@ def _register_textract_fp(name, signature, quant_mode, template_id):
     )
     def _template(src: pto.Tile, fp: pto.Tile, index_row: pto.i32, index_col: pto.i32, dst: pto.Tile):
         m, n = dst.valid_shape
+        src_ptr = src.as_ptr()
+        if str(src.dtype) == "si32":
+            src_ptr = pto.castptr(src_ptr, pto.ptr(pto.i32, "acc"))
         pto.mte_l0c_l1(
-            src.as_ptr(),
+            src_ptr,
             dst.as_ptr(),
             m,
             n,
@@ -84,25 +90,37 @@ template_textract_fp_f32_f32 = _register_textract_fp(
 )
 template_textract_fp_si32_si8 = _register_textract_fp(
     "template_textract_fp_si32_si8",
-    ("i32", "f32", "i32", "i32", "si8"),
+    (
+        ("si32", "f32", "i32", "i32", "si8"),
+        ("i32", "f32", "i32", "i32", "si8"),
+    ),
     "req8_vec",
     5,
 )
 template_textract_fp_si32_ui8 = _register_textract_fp(
     "template_textract_fp_si32_ui8",
-    ("i32", "f32", "i32", "i32", "ui8"),
+    (
+        ("si32", "f32", "i32", "i32", "ui8"),
+        ("i32", "f32", "i32", "i32", "ui8"),
+    ),
     "req8_vec",
     6,
 )
 template_textract_fp_si32_f16 = _register_textract_fp(
     "template_textract_fp_si32_f16",
-    ("i32", "f32", "i32", "i32", "f16"),
+    (
+        ("si32", "f32", "i32", "i32", "f16"),
+        ("i32", "f32", "i32", "i32", "f16"),
+    ),
     "deqf16_vec",
     7,
 )
 template_textract_fp_si32_bf16 = _register_textract_fp(
     "template_textract_fp_si32_bf16",
-    ("i32", "f32", "i32", "i32", "bf16"),
+    (
+        ("si32", "f32", "i32", "i32", "bf16"),
+        ("i32", "f32", "i32", "i32", "bf16"),
+    ),
     "qs322bf16_pre_vec",
     8,
 )

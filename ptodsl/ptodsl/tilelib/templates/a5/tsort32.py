@@ -175,7 +175,7 @@ def template_tsort32_with_tmp(src: pto.Tile, idx: pto.Tile, tmp: pto.Tile, dst: 
             )
             pad_mask, _ = pto.make_mask(dtype, BLOCK_SIZE - src_tail_per_row)
             pad_vec = pto.vdup(pad_value, pad_mask)
-            pto.vsts(pad_vec, tmp[0, tmp_last_offset:], pad_mask)
+            pto.vsts(pad_vec, tmp_ptr, tmp_last_offset, pad_mask)
             pto.vbitsort(
                 pto.addptr(dst_ptr, row * dst_stride),
                 tmp_ptr,
@@ -240,7 +240,7 @@ def template_tsort32_with_tmp(src: pto.Tile, idx: pto.Tile, tmp: pto.Tile, dst: 
                     ) - BLOCK_SIZE
                     pad_mask, _ = pto.make_mask(dtype, BLOCK_SIZE - src_tail_per_row)
                     pad_vec = pto.vdup(pad_value, pad_mask)
-                    pto.vsts(pad_vec, tmp[0, tmp_last_offset:], pad_mask)
+                    pto.vsts(pad_vec, tmp_ptr, tmp_last_offset, pad_mask)
 
                     pto.vbitsort(
                         pto.addptr(dst_ptr, row * dst_stride + tail_dst_offset),

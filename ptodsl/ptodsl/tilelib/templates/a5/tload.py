@@ -38,6 +38,21 @@ from ._load_store import (
 )
 def template_tload_nd2nd(src: pto.PartitionTensorView, dst: pto.Tile):
     elem_bytes = pto.bytewidth(dst.dtype)
+    if len(src.shape) == 2:
+        _, ub_cols = dst.shape
+        valid_rows, valid_cols = dst.valid_shape
+        row_stride, _ = src.strides
+        row_stride = valid_cols if row_stride is None else row_stride
+        pto.mte_load(
+            src.as_ptr(),
+            dst.as_ptr(),
+            0,
+            valid_cols * elem_bytes,
+            nburst=(valid_rows, row_stride * elem_bytes, ub_cols * elem_bytes),
+            pad=dma_pad_for(dst),
+        )
+        return
+
     g0, g1, g2, g3, g4 = src.shape
     s0, s1, s2, s3, s4 = src.strides
     _, ub_cols = dst.shape
@@ -99,6 +114,21 @@ def template_tload_nd2nd(src: pto.PartitionTensorView, dst: pto.Tile):
 )
 def template_tload_dn2dn(src: pto.PartitionTensorView, dst: pto.Tile):
     elem_bytes = pto.bytewidth(dst.dtype)
+    if len(src.shape) == 2:
+        tile_rows, _ = dst.shape
+        valid_rows, valid_cols = dst.valid_shape
+        _, col_stride = src.strides
+        col_stride = valid_rows if col_stride is None else col_stride
+        pto.mte_load(
+            src.as_ptr(),
+            dst.as_ptr(),
+            0,
+            valid_rows * elem_bytes,
+            nburst=(valid_cols, col_stride * elem_bytes, tile_rows * elem_bytes),
+            pad=dma_pad_for(dst),
+        )
+        return
+
     g0, g1, g2, g3, g4 = src.shape
     s0, s1, s2, s3, s4 = src.strides
     ub_rows, _ = dst.shape

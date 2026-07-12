@@ -250,13 +250,15 @@ static StringRef getTileOpName(Operation *op) {
   return op->getName().stripDialect();
 }
 
-static std::string getTargetArchString(ModuleOp mod) {
-  if (!mod)
+static std::string getTargetArchString(Operation *op) {
+  if (!op)
     return "";
-  auto targetAttr = mod->getAttrOfType<StringAttr>("pto.target_arch");
-  if (!targetAttr)
-    return "";
-  return targetAttr.getValue().str();
+  for (ModuleOp current = op->getParentOfType<ModuleOp>(); current;
+       current = current->getParentOfType<ModuleOp>()) {
+    if (auto targetAttr = current->getAttrOfType<StringAttr>("pto.target_arch"))
+      return targetAttr.getValue().str();
+  }
+  return "";
 }
 
 static std::string stringifyMemorySpace(pto::AddressSpace space) {
@@ -694,7 +696,7 @@ static std::optional<OperandTypeInfo> buildOperandTypeInfo(Value value) {
 static std::optional<SpecKey> buildSpecKey(Operation *op) {
   SpecKey key;
   key.opName = getTileOpName(op).str();
-  key.targetArch = getTargetArchString(op->getParentOfType<ModuleOp>());
+  key.targetArch = getTargetArchString(op);
 
   for (unsigned i = 0; i < op->getNumOperands(); ++i) {
     auto info = buildOperandTypeInfo(op->getOperand(i));

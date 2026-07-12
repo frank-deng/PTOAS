@@ -709,13 +709,16 @@ getTargetArch(Operation *operation) {
         "InsertTemplateAttributes requires a parent module");
     return std::nullopt;
   }
-  auto target = module->getAttrOfType<StringAttr>("pto.target_arch");
-  if (!target) {
-    operation->emitError(
-        "InsertTemplateAttributes requires pto.target_arch");
-    return std::nullopt;
+
+  for (ModuleOp current = module; current;
+       current = current->getParentOfType<ModuleOp>()) {
+    if (auto target = current->getAttrOfType<StringAttr>("pto.target_arch"))
+      return target.getValue().str();
   }
-  return target.getValue().str();
+
+  operation->emitError(
+      "InsertTemplateAttributes requires pto.target_arch");
+  return std::nullopt;
 }
 
 static std::optional<std::string>

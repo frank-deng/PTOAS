@@ -11,10 +11,17 @@ from ptodsl import pto
 import ptodsl.tilelib as tilelib
 
 from ._common import NUMERIC_DTYPES, element_store_dist
+from ._part import pad_max, pad_min
 
 
-def _single_output_col(dst_valid_shape=(), **_):
-    return len(dst_valid_shape) == 2 and dst_valid_shape[1] == 1
+def _single_output_col(dst_shape=(), dst_valid_shape=(), **_):
+    if len(dst_valid_shape) != 2:
+        return False
+    return dst_valid_shape[1] == 1 or (
+        _is_unknown_dim(dst_valid_shape[1])
+        and len(dst_shape) == 2
+        and dst_shape[1] == 1
+    )
 
 
 def _ub_or_vec_row_major(operand_memory_spaces, operand_b_layouts, operand_s_layouts, **_):
@@ -23,6 +30,35 @@ def _ub_or_vec_row_major(operand_memory_spaces, operand_b_layouts, operand_s_lay
         and all(layout == "row_major" for layout in operand_b_layouts)
         and all(layout == "none_box" for layout in operand_s_layouts)
     )
+
+
+def _row_reduction_layout(src_config, tmp_config, dst_config, dst_shape=(), operand_memory_spaces=(), **_):
+    if not all(space in {"ub", "vec"} for space in operand_memory_spaces):
+        return False
+    if not (src_config and tmp_config and dst_config):
+        return False
+    if src_config.b_layout != "row_major" or src_config.s_layout != "none_box":
+        return False
+    if tmp_config.b_layout != "row_major" or tmp_config.s_layout != "none_box":
+        return False
+
+    dst_row_major = dst_config.b_layout == "row_major"
+    dst_col_major_single_col = (
+        dst_config.b_layout == "col_major"
+        and len(dst_shape) == 2
+        and dst_shape[1] == 1
+    )
+    return (
+        (dst_row_major and dst_config.s_layout == "none_box")
+        or (
+            dst_col_major_single_col
+            and dst_config.s_layout in {"none_box", "row_major"}
+        )
+    )
+
+
+def _is_unknown_dim(value):
+    return value is None or value in {-1, -(2**63)}
 
 
 def _rowprod_reduction_steps(dtype):
@@ -40,6 +76,21 @@ def _one(dtype):
     return pto.i16(1)
 
 
+def _zero(dtype):
+    name = str(dtype)
+    if name == "f32":
+        return pto.f32(0.0)
+    if name == "f16":
+        return pto.f16(0.0)
+    if name == "bf16":
+        return pto.bf16(0.0)
+    if name in {"ui32", "si32", "i32"}:
+        return pto.i32(0)
+    if name in {"ui16", "si16", "i16"}:
+        return pto.i16(0)
+    return pto.i8(0)
+
+
 def register_row_extreme(*, op, name, reduce_op, combine_op):
     @tilelib.tile_template(
         op=op,
@@ -50,9 +101,7 @@ def register_row_extreme(*, op, name, reduce_op, combine_op):
         op_engine="vector",
         op_class="reduction",
         constraints=[
-            tilelib.check_memory_space("ub"),
-            tilelib.check_layout("row_major"),
-            tilelib.check_s_layout("none_box"),
+            _row_reduction_layout,
             _single_output_col,
         ],
         id=0,
@@ -64,19 +113,27 @@ def register_row_extreme(*, op, name, reduce_op, combine_op):
         _ = tmp
         dtype = dst.dtype
         valid_rows, valid_cols = src.valid_shape
+        src_cols = src.shape[1]
+        dst_cols = dst.shape[1]
+        src_ptr = src.as_ptr()
+        dst_ptr = dst.as_ptr()
         lanes = pto.elements_per_vreg(dtype)
         one_mask, _ = pto.make_mask(dtype, 1)
+        init = pad_min(dtype) if combine_op is pto.vmax else pad_max(dtype)
 
         for row in range(0, valid_rows, 1):
-            first_mask, remained = pto.make_mask(dtype, valid_cols)
-            first = pto.vlds(src[row, 0:])
-            acc = reduce_op(first, first_mask)
-            for col in range(lanes, valid_cols, lanes):
+            remained = valid_cols
+            acc = pto.vbr(init)
+            for col in range(0, valid_cols, lanes):
                 mask, remained = pto.make_mask(dtype, remained)
-                value = pto.vlds(src[row, col:])
+                src_addr = pto.addptr(src_ptr, row * src_cols + col)
+                value = pto.vlds(src_addr, 0)
                 reduced = reduce_op(value, mask)
+                if str(dtype) in {"f16", "f32"}:
+                    reduced = pto.vsel(reduced, acc, mask)
                 acc = combine_op(acc, reduced, one_mask)
-            pto.vsts(acc, dst[row, 0:], one_mask, dist=element_store_dist(dtype))
+            dst_addr = pto.addptr(dst_ptr, row * dst_cols)
+            pto.vsts(acc, dst_addr, 0, one_mask, dist=element_store_dist(dtype))
 
     return template
 
@@ -91,9 +148,7 @@ def register_rowsum():
         op_engine="vector",
         op_class="reduction",
         constraints=[
-            tilelib.check_memory_space("ub"),
-            tilelib.check_layout("row_major"),
-            tilelib.check_s_layout("none_box"),
+            _row_reduction_layout,
             _single_output_col,
         ],
         id=0,
@@ -105,6 +160,10 @@ def register_rowsum():
         _ = tmp
         dtype = dst.dtype
         valid_rows, valid_cols = src.valid_shape
+        src_cols = src.shape[1]
+        dst_cols = dst.shape[1]
+        src_ptr = src.as_ptr()
+        dst_ptr = dst.as_ptr()
         lanes = pto.elements_per_vreg(dtype)
         one_mask, _ = pto.make_mask(dtype, 1)
 
@@ -116,7 +175,8 @@ def register_rowsum():
                 acc = zero
                 for col in range(0, valid_cols, lanes):
                     mask, remained = pto.make_mask(dtype, remained)
-                    value = pto.vlds(src[row, col:])
+                    src_addr = pto.addptr(src_ptr, row * src_cols + col)
+                    value = pto.vlds(src_addr, 0)
                     reduced = pto.vcadd(value, mask)
                     acc = pto.vadd(acc, reduced, acc_mask)
                 converted = pto.vcvt(
@@ -126,18 +186,20 @@ def register_rowsum():
                     sat=pto.VcvtSatMode.NOSAT,
                     part=pto.VcvtPartMode.EVEN,
                 )
-                pto.vsts(converted, dst[row, 0:], one_mask, dist=element_store_dist(dtype))
+                dst_addr = pto.addptr(dst_ptr, row * dst_cols)
+                pto.vsts(converted, dst_addr, 0, one_mask, dist=element_store_dist(dtype))
         else:
             for row in range(0, valid_rows, 1):
-                first_mask, remained = pto.make_mask(dtype, valid_cols)
-                first = pto.vlds(src[row, 0:])
-                acc = pto.vcadd(first, first_mask)
-                for col in range(lanes, valid_cols, lanes):
+                remained = valid_cols
+                acc = pto.vbr(_zero(dtype))
+                for col in range(0, valid_cols, lanes):
                     mask, remained = pto.make_mask(dtype, remained)
-                    value = pto.vlds(src[row, col:])
+                    src_addr = pto.addptr(src_ptr, row * src_cols + col)
+                    value = pto.vlds(src_addr, 0)
                     reduced = pto.vcadd(value, mask)
                     acc = pto.vadd(acc, reduced, one_mask)
-                pto.vsts(acc, dst[row, 0:], one_mask, dist=element_store_dist(dtype))
+                dst_addr = pto.addptr(dst_ptr, row * dst_cols)
+                pto.vsts(acc, dst_addr, 0, one_mask, dist=element_store_dist(dtype))
 
     return template
 
@@ -152,7 +214,7 @@ def register_rowprod():
         op_engine="vector",
         op_class="reduction",
         constraints=[
-            _ub_or_vec_row_major,
+            _row_reduction_layout,
             _single_output_col,
         ],
         id=0,
@@ -164,6 +226,10 @@ def register_rowprod():
         _ = tmp
         dtype = dst.dtype
         valid_rows, valid_cols = src.valid_shape
+        src_cols = src.shape[1]
+        dst_cols = dst.shape[1]
+        src_ptr = src.as_ptr()
+        dst_ptr = dst.as_ptr()
         lanes = pto.elements_per_vreg(dtype)
         one_mask, _ = pto.make_mask(dtype, 1)
         full_mask, _ = pto.make_mask(dtype, lanes)
@@ -174,14 +240,16 @@ def register_rowprod():
             acc = one
             for col in range(0, valid_cols, lanes):
                 mask, remained = pto.make_mask(dtype, remained)
-                value = pto.vlds(src[row, col:])
+                src_addr = pto.addptr(src_ptr, row * src_cols + col)
+                value = pto.vlds(src_addr, 0)
                 prod = pto.vmul(acc, value, mask)
                 acc = pto.vsel(prod, acc, mask)
 
             for _ in pto.static_range(_rowprod_reduction_steps(dtype)):
                 lhs, rhs = pto.vintlv(acc, one)
                 acc = pto.vmul(lhs, rhs, full_mask)
-            pto.vsts(acc, dst[row, 0:], one_mask, dist=element_store_dist(dtype))
+            dst_addr = pto.addptr(dst_ptr, row * dst_cols)
+            pto.vsts(acc, dst_addr, 0, one_mask, dist=element_store_dist(dtype))
 
     return template
 

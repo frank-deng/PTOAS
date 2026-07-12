@@ -34,6 +34,42 @@ def _ub_or_vec_row_major(operand_memory_spaces, operand_b_layouts, operand_s_lay
     )
 
 
+def _row_expand_layout(src0_config, src1_config, dst_config, src1_shape=(), operand_memory_spaces=(), **_):
+    if not all(space in {"ub", "vec"} for space in operand_memory_spaces):
+        return False
+    if not (src0_config and src1_config and dst_config):
+        return False
+    if src0_config.b_layout != "row_major" or src0_config.s_layout != "none_box":
+        return False
+    if dst_config.b_layout != "row_major" or dst_config.s_layout != "none_box":
+        return False
+    src1_row_major = src1_config.b_layout == "row_major"
+    src1_col_major_row_scalar = (
+        src1_config.b_layout == "col_major"
+        and len(src1_shape) == 2
+        and src1_shape[1] == 1
+    )
+    return (
+        (src1_row_major and src1_config.s_layout == "none_box")
+        or (
+            src1_col_major_row_scalar
+            and src1_config.s_layout in {"none_box", "row_major"}
+        )
+    )
+
+
+def _is_unknown_dim(value):
+    return value is None or value in {-1, -(2**63)}
+
+
+def _known_eq(lhs, rhs) -> bool:
+    return _is_unknown_dim(lhs) or _is_unknown_dim(rhs) or lhs == rhs
+
+
+def _known_ge(lhs, rhs) -> bool:
+    return _is_unknown_dim(lhs) or _is_unknown_dim(rhs) or lhs >= rhs
+
+
 def register_row_expand_binary(*, op, name, vector_op, dtypes):
     @tilelib.tile_template(
         op=op,
@@ -44,7 +80,7 @@ def register_row_expand_binary(*, op, name, vector_op, dtypes):
         op_engine="vector",
         op_class="broadcast",
         constraints=[
-            _ub_or_vec_row_major,
+            _row_expand_layout,
             _valid_row_expand_binary,
         ],
         id=0,
@@ -92,7 +128,7 @@ def register_row_expand_expdif():
         op_engine="vector",
         op_class="broadcast",
         constraints=[
-            _ub_or_vec_row_major,
+            _row_expand_layout,
             _valid_row_expand_binary,
         ],
         id=0,
@@ -117,7 +153,7 @@ def register_row_expand_expdif():
         op_engine="vector",
         op_class="broadcast",
         constraints=[
-            _ub_or_vec_row_major,
+            _row_expand_layout,
             _valid_row_expand_binary,
         ],
         id=0,
@@ -230,9 +266,10 @@ def _valid_row_expand_binary(src0_valid_shape=(), src1_valid_shape=(), dst_valid
         len(src0_valid_shape) == 2
         and len(src1_valid_shape) == 2
         and len(dst_valid_shape) == 2
-        and src0_valid_shape == dst_valid_shape
-        and src1_valid_shape[0] == dst_valid_shape[0]
-        and src1_valid_shape[1] >= 1
+        and _known_eq(src0_valid_shape[0], dst_valid_shape[0])
+        and _known_eq(src0_valid_shape[1], dst_valid_shape[1])
+        and _known_eq(src1_valid_shape[0], dst_valid_shape[0])
+        and _known_ge(src1_valid_shape[1], 1)
     )
 
 
@@ -241,9 +278,10 @@ def _valid_column_expand_binary(src0_valid_shape=(), src1_valid_shape=(), dst_va
         len(src0_valid_shape) == 2
         and len(src1_valid_shape) == 2
         and len(dst_valid_shape) == 2
-        and src0_valid_shape == dst_valid_shape
-        and src1_valid_shape[0] >= 1
-        and src1_valid_shape[1] == dst_valid_shape[1]
+        and _known_eq(src0_valid_shape[0], dst_valid_shape[0])
+        and _known_eq(src0_valid_shape[1], dst_valid_shape[1])
+        and _known_ge(src1_valid_shape[0], 1)
+        and _known_eq(src1_valid_shape[1], dst_valid_shape[1])
     )
 
 

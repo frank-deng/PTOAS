@@ -8,16 +8,41 @@
 """PTODSL TileLib template for pto.trecip — default precision only."""
 
 from ptodsl import pto
+import ptodsl.tilelib as tilelib
 
-from ._elementwise import register_unary
 
-
-template_trecip = register_unary(
+@tilelib.tile_template(
     op="pto.trecip",
+    target="a5",
     name="template_trecip",
-    vector_op=pto.vrec,
     dtypes=[
         ("f16", "f16"),
         ("f32", "f32"),
     ],
+    iteration_axis="none",
+    op_engine="vector",
+    op_class="elementwise",
+    constraints=[
+        tilelib.check_memory_space("ub"),
+        tilelib.check_layout("row_major"),
+        tilelib.check_s_layout("none_box"),
+    ],
+    id=0,
+    loop_depth=2,
+    is_post_update=False,
+    tags=("elementwise", "reciprocal"),
 )
+def template_trecip(src: pto.Tile, dst: pto.Tile):
+    dtype = dst.dtype
+    valid_rows, valid_cols = dst.valid_shape
+    lanes = pto.elements_per_vreg(dtype)
+    one_scalar = pto.f16(1.0) if str(dtype) == "f16" else pto.f32(1.0)
+
+    for row in range(0, valid_rows, 1):
+        remained = valid_cols
+        for col in range(0, valid_cols, lanes):
+            mask, remained = pto.make_mask(dtype, remained)
+            value = pto.vlds(src[row, col:])
+            one = pto.vbr(one_scalar)
+            result = pto.vdiv(one, value, mask)
+            pto.vsts(result, dst[row, col:], mask)

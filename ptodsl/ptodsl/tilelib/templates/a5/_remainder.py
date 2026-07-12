@@ -24,7 +24,14 @@ def _remainder(lhs, rhs, mask, *, round_mode, dtype):
     if str(dtype) in {"f16", "bf16", "f32"}:
         quotient = pto.vtrc(quotient, mask, rnd=round_mode)
     product = pto.vmul(quotient, rhs, mask)
-    return pto.vsub(lhs, product, mask)
+    result = pto.vsub(lhs, product, mask)
+    if str(dtype) == "f32":
+        sign_diff_mask = pto.vcmps(
+            pto.vmul(rhs, result, mask), pto.f32(0.0), mask, pto.CmpMode.LT
+        )
+        corrected = pto.vadd(result, rhs, sign_diff_mask)
+        result = pto.vsel(corrected, result, sign_diff_mask)
+    return result
 
 
 def _scalar_remainder(lhs, scalar, mask, *, round_mode, dtype):
