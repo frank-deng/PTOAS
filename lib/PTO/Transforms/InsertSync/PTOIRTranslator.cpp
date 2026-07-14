@@ -464,16 +464,13 @@ LogicalResult PTOIRTranslator::UpdateAllocTileOpMemInfo(pto::AllocTileOp op) {
   auto tileType = dyn_cast<pto::TileBufType>(res.getType());
   uint64_t sizeInBytes = 0;
   uint64_t baseAddr = 0;
+  std::optional<uint64_t> knownPhysicalAddress;
 
   // If alloc_tile carries an explicit address, record it when it's a constant.
   if (Value addr = op.getAddr()) {
-    llvm::APInt apIntValue;
-    if (matchPattern(addr, m_ConstantInt(&apIntValue))) {
-        // 将 APInt 转换为 int64_t，再转为 uint64_t
-        int64_t c = apIntValue.getSExtValue();  // 有符号扩展转换
-        // 如果确定是无符号值，也可以用：apIntValue.getZExtValue()
-        baseAddr = static_cast<uint64_t>(c);
-    }
+    knownPhysicalAddress = getKnownPhysicalAddress(addr);
+    if (knownPhysicalAddress)
+      baseAddr = *knownPhysicalAddress;
   }
 
   // 1. 计算大小
@@ -513,12 +510,8 @@ LogicalResult PTOIRTranslator::UpdateAllocTileOpMemInfo(pto::AllocTileOp op) {
 
   // 3. 注册 Buffer 信息
   auto newMemInfo = std::make_unique<BaseMemInfo>(
-      res,
-      res,
-      space, // 使用解析出的 space
-      SmallVector<uint64_t>{baseAddr},
-      sizeInBytes
-  );
+      res, res, space, SmallVector<uint64_t>{baseAddr}, sizeInBytes,
+      knownPhysicalAddress.has_value() && isLocalAddressSpace(space));
 
   buffer2MemInfoMap_[res].emplace_back(newMemInfo->clone());
   return success();

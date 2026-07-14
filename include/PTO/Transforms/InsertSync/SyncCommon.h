@@ -117,6 +117,8 @@ struct BaseMemInfo {
     if (!areVectorEqual(baseAddresses, other.baseAddresses)) return false;
     if (rootBuffer != other.rootBuffer) return false;
     if (scope != other.scope) return false;
+    if (hasKnownPhysicalAddresses != other.hasKnownPhysicalAddresses)
+      return false;
     // allocateSize 和 baseBuffer 的严格相等性在某些别名分析中可能太强了，
     // 但为了保持原有逻辑，先保留。重点是 rootBuffer 必须一致。
     if (allocateSize != other.allocateSize) return false;
