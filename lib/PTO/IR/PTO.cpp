@@ -7757,12 +7757,15 @@ llvm::LogicalResult mlir::pto::TGatherOp::verify() {
     Type srcTy = getSrc().getType();
     Type dstTy = getDst().getType();
     Type idxTy = getIndices().getType();
-    Type tmpTy = getTmp().getType();
     if (failed(verifyTileBufCommon(*this, srcTy, "src", allowA5ElemTypes)) ||
         failed(verifyTileBufCommon(*this, dstTy, "dst", allowA5ElemTypes)) ||
-        failed(verifyTileBufCommon(*this, idxTy, "indices")) ||
-        failed(verifyTileBufCommon(*this, tmpTy, "tmp")))
+        failed(verifyTileBufCommon(*this, idxTy, "indices")))
       return failure();
+    if (getTmp()) {
+      Type tmpTy = getTmp().getType();
+      if (failed(verifyTileBufCommon(*this, tmpTy, "tmp")))
+        return failure();
+    }
 
     Type srcElem = getElemTy(srcTy);
     Type dstElem = getElemTy(dstTy);
@@ -7806,10 +7809,10 @@ llvm::LogicalResult mlir::pto::TGatherOp::verify() {
     }
 
     if (!allowA5ElemTypes) {
-      Type tmpElem = getElemTy(tmpTy);
+      Type tmpElem = getElemTy(getTmp().getType());
       if (tmpElem != idxElem)
         return emitOpError("expects tmp and indices to have the same element type");
-      if (failed(verifyTileBufSameValidShape(*this, idxTy, tmpTy, "indices", "tmp")))
+      if (failed(verifyTileBufSameValidShape(*this, idxTy, getTmp().getType(), "indices", "tmp")))
         return failure();
     }
     return success();
@@ -7897,8 +7900,8 @@ llvm::LogicalResult mlir::pto::TGatherOp::verify() {
         return emitOpError("compare-form tgather does not take indices");
       return verifyCompareForm(/*allowA5SrcTypes=*/true);
     }
-    if (!getIndices() || !getTmp())
-      return emitOpError("index-form tgather expects both indices and tmp");
+    if (!getIndices())
+      return emitOpError("index-form tgather expects indices");
     return verifyIndexForm(/*allow16BitIndices=*/true, /*allowA5ElemTypes=*/true);
   };
 

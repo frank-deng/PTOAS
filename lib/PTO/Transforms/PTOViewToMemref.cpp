@@ -3651,7 +3651,8 @@ struct PTOViewToMemrefPass
         }
 
         if (maskPattern) {
-          rewriter.replaceOpWithNewOp<pto::TGatherOp>(
+          replaceOpWithClonedAttrs<pto::TGatherOp>(
+              rewriter,
               op,
               TypeRange{},
               src,
@@ -3675,7 +3676,8 @@ struct PTOViewToMemrefPass
             return;
           }
 
-          rewriter.replaceOpWithNewOp<pto::TGatherOp>(
+          replaceOpWithClonedAttrs<pto::TGatherOp>(
+              rewriter,
               op,
               TypeRange{},
               src,
@@ -3692,21 +3694,31 @@ struct PTOViewToMemrefPass
 
         if (indices || tmp) {
           auto indicesTy = dyn_cast<MemRefType>(indices.getType());
-          auto tmpTy = dyn_cast<MemRefType>(tmp.getType());
-          if (!indicesTy || !tmpTy) {
-            op.emitError("index-form tgather expects indices/tmp to be memref yet");
+          if (!indicesTy) {
+            op.emitError("index-form tgather expects indices to be memref yet");
             signalPassFailure();
             return;
           }
+          Value tmpVal;
+          if (tmp) {
+            auto tmpTy = dyn_cast<MemRefType>(tmp.getType());
+            if (!tmpTy) {
+              op.emitError("index-form tgather expects tmp to be memref yet");
+              signalPassFailure();
+              return;
+            }
+            tmpVal = tmp;
+          }
 
-          rewriter.replaceOpWithNewOp<pto::TGatherOp>(
+          replaceOpWithClonedAttrs<pto::TGatherOp>(
+              rewriter,
               op,
               TypeRange{},
               src,
               dst,
               /*cdst=*/Value(),
               indices,
-              tmp,
+              tmpVal,
               /*kValue=*/Value(),
               /*maskPattern=*/pto::MaskPatternAttr(),
               /*cmpMode=*/pto::CmpModeAttr(),
