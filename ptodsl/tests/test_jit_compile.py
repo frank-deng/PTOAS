@@ -328,14 +328,14 @@ def dynamic_buf_kernel_module(
 
         # Compute dynamic buf-id from the row index: row & 1
         buf_id = row & 1
-        pto.get_buf_dyn(pto.Pipe.MTE2, buf_id, 0)
+        pto.get_buf(pto.Pipe.MTE2, buf_id, 0)
         pto.mte_gm_ub(src_row, ub_ptr, 0, 64, nburst=(1, 64, 64))
-        pto.rls_buf_dyn(pto.Pipe.MTE2, buf_id, 0)
+        pto.rls_buf(pto.Pipe.MTE2, buf_id, 0)
 
         buf_id2 = row & 1
-        pto.get_buf_dyn(pto.Pipe.MTE3, buf_id2, 0)
+        pto.get_buf(pto.Pipe.MTE3, buf_id2, 0)
         pto.mte_ub_gm(ub_ptr, dst_row, 64, nburst=(1, 64, 64))
-        pto.rls_buf_dyn(pto.Pipe.MTE3, buf_id2, 0)
+        pto.rls_buf(pto.Pipe.MTE3, buf_id2, 0)
         pto.pipe_barrier(pto.Pipe.ALL)
 
 
@@ -2476,13 +2476,13 @@ def public_sync_surface_probe():
 @pto.jit(target="a5")
 def public_dynamic_buf_sync_surface_probe():
     const_buf_id = pto.const(3)
-    pto.get_buf_dyn(pto.Pipe.V, const_buf_id)
-    pto.rls_buf_dyn(pto.Pipe.MTE2, const_buf_id, 2)
+    pto.get_buf(pto.Pipe.V, const_buf_id)
+    pto.rls_buf(pto.Pipe.MTE2, const_buf_id, 2)
 
     with pto.for_(0, 4, step=1) as iter:
         buf_id = iter & 1
-        pto.get_buf_dyn(pto.Pipe.MTE2, buf_id, 0)
-        pto.rls_buf_dyn(pto.Pipe.MTE2, buf_id, 0)
+        pto.get_buf(pto.Pipe.MTE2, buf_id, 0)
+        pto.rls_buf(pto.Pipe.MTE2, buf_id, 0)
 
 
 @pto.jit(target="a5", ast_rewrite=False)
@@ -2910,13 +2910,13 @@ def auto_mode_explicit_surface_violation_probe():
 @pto.jit(target="a5")
 def dynamic_buf_invalid_type_probe():
     bad = pto.const(1.0, dtype=pto.f32)
-    pto.get_buf_dyn(pto.Pipe.V, bad)
+    pto.get_buf(pto.Pipe.V, bad)
 
 
 @pto.jit(target="a5")
 def dynamic_rls_buf_invalid_type_probe():
     bad = pto.const(0.0, dtype=pto.f32)
-    pto.rls_buf_dyn(pto.Pipe.MTE2, bad)
+    pto.rls_buf(pto.Pipe.MTE2, bad)
 
 
 class _FakeTensor:
@@ -3010,8 +3010,6 @@ def main() -> None:
         "pipe_barrier",
         "get_buf",
         "rls_buf",
-        "get_buf_dyn",
-        "rls_buf_dyn",
         "set_cross_flag",
         "wait_cross_flag",
         "set_intra_flag",
@@ -3079,6 +3077,8 @@ def main() -> None:
     expect(not hasattr(pto, "tload"), "legacy pto.tload should not remain on the public pto namespace")
     expect(not hasattr(pto, "tstore"), "legacy pto.tstore should not remain on the public pto namespace")
     expect(not hasattr(pto, "tadd"), "legacy pto.tadd should not remain on the public pto namespace")
+    expect(not hasattr(pto, "get_buf_dyn"), "pto.get_buf_dyn should not remain on the public pto namespace")
+    expect(not hasattr(pto, "rls_buf_dyn"), "pto.rls_buf_dyn should not remain on the public pto namespace")
     expect(not hasattr(pto, "tile_buf_type"), "pto.tile_buf_type should not remain on the public pto namespace")
     expect(not hasattr(pto, "vecscope"), "pto.vecscope should not remain on the public pto namespace")
     expect(not hasattr(pto, "as_ptr"), "pto.as_ptr should not remain on the public pto namespace")
@@ -5542,12 +5542,12 @@ def main() -> None:
     expect_raises(
         TypeError,
         lambda: dynamic_buf_invalid_type_probe.compile(),
-        "get_buf_dyn",
+        "get_buf",
     )
     expect_raises(
         TypeError,
         lambda: dynamic_rls_buf_invalid_type_probe.compile(),
-        "rls_buf_dyn",
+        "rls_buf",
     )
     expect_raises(
         ValueError,
