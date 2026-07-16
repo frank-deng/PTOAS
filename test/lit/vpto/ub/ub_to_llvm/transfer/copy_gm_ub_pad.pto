@@ -7,7 +7,7 @@
 // See LICENSE in the root of the software repository for the full text of the License.
 
 // A3: copy_gm_to_ubuf with padding -> llvm.hivm.MOV.OUT.TO.UB.ALIGN.V2.f32 (4-arg call).
-// RUN: ( ptoas --pto-arch=a3 --pto-backend=vpto %s -o %t --mlir-print-ir-after=convert-func-to-llvm 2>&1 || true ) | FileCheck %s
+// RUN: ( ptoas --pto-arch=a3 --pto-backend=vpto --emit-vpto-llvm-ir %s -o %t --mlir-print-ir-after=convert-func-to-llvm 2>&1 || true ) | FileCheck %s
 
 module attributes {pto.target_arch = "a3", pto.kernel_kind = #pto.kernel_kind<vector>} {
   // CHECK-LABEL: llvm.func @copy_gm_ub_a3_pad_f32_mix_aiv(

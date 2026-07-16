@@ -9,7 +9,7 @@
 // pto.ub.vadd -> llvm.hivm.VADD.* for s16, f16, s32, f32.
 // Verifies: intrinsic suffix per dtype, pointer operand wiring, SIMD flag (bit 56),
 // and 8-bit field mask (255) in the packed config word.
-// RUN: ptoas --pto-arch=a3 --pto-backend=vpto %s -o %t --mlir-print-ir-after=convert-func-to-llvm 2>&1 | FileCheck %s
+// RUN: ptoas --pto-arch=a3 --pto-backend=vpto --emit-vpto-llvm-ir %s -o %t --mlir-print-ir-after=convert-func-to-llvm 2>&1 | FileCheck %s
 
 module attributes {pto.target_arch = "a3", pto.kernel_kind = #pto.kernel_kind<vector>} {
   // CHECK-LABEL: llvm.func @ub_vadd_s16_mix_aiv(

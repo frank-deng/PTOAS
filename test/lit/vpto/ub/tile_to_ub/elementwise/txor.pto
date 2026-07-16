@@ -8,7 +8,7 @@
 
 // txor -> De Morgan decomposition: vor(tmp) + vand(dst) + vnot(dst) + vand(dst,tmp).
 // The PIPE_V barriers mirror CANN TXOR_IMPL dependencies between these vector ops.
-// RUN: ptoas --pto-arch=a3 --pto-backend=vpto %s -o %t --mlir-print-ir-after=pto-lower-to-ubuf-ops 2>&1 | FileCheck %s
+// RUN: ptoas --pto-arch=a3 --pto-backend=vpto --emit-vpto-llvm-ir %s -o %t --mlir-print-ir-after=pto-lower-to-ubuf-ops 2>&1 | FileCheck %s
 
 module attributes {pto.target_arch = "a3", pto.kernel_kind = #pto.kernel_kind<vector>} {
   // CHECK-LABEL: func.func @lower_txor()

@@ -9,7 +9,7 @@
 // Verify A3/HVVM byte packing for VADD config word:
 //   repeat[7:0], dstBlk[15:8], src0Blk[23:16], src1Blk[31:24],
 //   dstRep[39:32], src0Rep[47:40], src1Rep[55:48], simdFlag[63:56]=1.
-// RUN: ptoas --pto-arch=a3 --pto-backend=vpto %s -o %t --mlir-print-ir-after=convert-func-to-llvm 2>&1 | FileCheck %s
+// RUN: ptoas --pto-arch=a3 --pto-backend=vpto --emit-vpto-llvm-ir %s -o %t --mlir-print-ir-after=convert-func-to-llvm 2>&1 | FileCheck %s
 
 module attributes {pto.target_arch = "a3", pto.kernel_kind = #pto.kernel_kind<vector>} {
   // CHECK-LABEL: llvm.func @ub_vadd_packed_mix_aiv(

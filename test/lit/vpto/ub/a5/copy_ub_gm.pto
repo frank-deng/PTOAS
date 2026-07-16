@@ -7,7 +7,7 @@
 // See LICENSE in the root of the software repository for the full text of the License.
 
 // A5 regression: copy_ubuf_to_gm uses .DV intrinsics.
-// RUN: ptoas --pto-arch=a5 --pto-backend=vpto %s -o %t --mlir-print-ir-after=convert-func-to-llvm 2>&1 | FileCheck %s
+// RUN: ptoas --pto-arch=a5 --pto-backend=vpto --emit-vpto-llvm-ir %s -o %t --mlir-print-ir-after=convert-func-to-llvm 2>&1 | FileCheck %s
 
 module attributes {pto.target_arch = "a5", pto.kernel_kind = #pto.kernel_kind<vector>} {
   // CHECK-LABEL: llvm.func @copy_ub_gm_a5_f32_mix_aiv(

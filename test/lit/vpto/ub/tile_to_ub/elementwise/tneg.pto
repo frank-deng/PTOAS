@@ -7,7 +7,7 @@
 // See LICENSE in the root repository for the full text of the License.
 
 // tneg -> pto.ub.vmuls(dst, src, -1) decomposition (no native VNEG on C220).
-// RUN: ptoas --pto-arch=a3 --pto-backend=vpto %s -o /dev/null --mlir-print-ir-after=pto-lower-to-ubuf-ops 2>&1 | FileCheck %s
+// RUN: ptoas --pto-arch=a3 --pto-backend=vpto --emit-vpto-llvm-ir %s -o /dev/null --mlir-print-ir-after=pto-lower-to-ubuf-ops 2>&1 | FileCheck %s
 
 module attributes {pto.target_arch = "a3", pto.kernel_kind = #pto.kernel_kind<vector>} {
   // CHECK-LABEL: func.func @lower_tneg()

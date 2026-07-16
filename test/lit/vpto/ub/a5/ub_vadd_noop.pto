@@ -7,7 +7,7 @@
 // See LICENSE in the root of the software repository for the full text of the License.
 
 // A5: pto.ub.vadd is NOT lowered to llvm.hivm.VADD on a5 targets.
-// RUN: ( ptoas --pto-arch=a5 --pto-backend=vpto %s -o %t --mlir-print-ir-after=convert-func-to-llvm 2>&1 || true ) | FileCheck %s
+// RUN: ( ptoas --pto-arch=a5 --pto-backend=vpto --emit-vpto-llvm-ir %s -o %t --mlir-print-ir-after=convert-func-to-llvm 2>&1 || true ) | FileCheck %s
 
 module attributes {pto.target_arch = "a5", pto.kernel_kind = #pto.kernel_kind<vector>} {
   func.func @ub_vadd_noop(%dst: !pto.ptr<i16, ub>, %src0: !pto.ptr<i16, ub>, %src1: !pto.ptr<i16, ub>) attributes {pto.aicore} {

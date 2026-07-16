@@ -6,8 +6,8 @@
 // INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 // See LICENSE in the root of the software repository for the full text of the License.
 
-// RUN: ptoas --pto-arch=a3 --pto-backend=vpto %s -o %t --mlir-print-ir-after=expand-strided-metadata 2>&1 | FileCheck %s --check-prefix=LOAD
-// RUN: ptoas --pto-arch=a3 --pto-backend=vpto %s -o %t --mlir-print-ir-after=expand-strided-metadata 2>&1 | FileCheck %s --check-prefix=STORE
+// RUN: ptoas --pto-arch=a3 --pto-backend=vpto --emit-vpto-llvm-ir %s -o %t --mlir-print-ir-after=expand-strided-metadata 2>&1 | FileCheck %s --check-prefix=LOAD
+// RUN: ptoas --pto-arch=a3 --pto-backend=vpto --emit-vpto-llvm-ir %s -o %t --mlir-print-ir-after=expand-strided-metadata 2>&1 | FileCheck %s --check-prefix=STORE
 
 module attributes {pto.target_arch = "a3", pto.kernel_kind = #pto.kernel_kind<vector>} {
   // LOAD-LABEL: func.func @tload_subview_offset

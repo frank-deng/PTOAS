@@ -8,7 +8,7 @@
 
 // Round-trip (parse -> print) tests for all 7 binary UB elementwise ops.
 // Verifies op mnemonic, operand order, and type annotation survive parsing.
-// RUN: ptoas --pto-arch=a3 --pto-backend=vpto %s -o /dev/null --mlir-print-ir-after=vpto-split-cv-module 2>&1 | FileCheck %s
+// RUN: ptoas --pto-arch=a3 --pto-backend=vpto --emit-vpto-llvm-ir %s -o /dev/null --mlir-print-ir-after=vpto-split-cv-module 2>&1 | FileCheck %s
 
 module attributes {pto.target_arch = "a3", pto.kernel_kind = #pto.kernel_kind<vector>} {
   // CHECK-LABEL: func.func @rt_vmax
