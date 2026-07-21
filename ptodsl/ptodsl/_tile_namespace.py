@@ -176,6 +176,7 @@ class _TileNamespace:
     mrgsort = staticmethod(_ops.tmrgsort)
     gather = staticmethod(_ops.tgather)
     gatherb = staticmethod(_ops.tgatherb)
+    scatter = staticmethod(_ops.tscatter)
 
     sel = staticmethod(_ops.tsel)
     sels = staticmethod(_ops.tsels)

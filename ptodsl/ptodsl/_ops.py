@@ -3632,6 +3632,16 @@ def tgatherb(src, offsets, dst):
     )
 
 
+def tscatter(src, dst, *, indexes=None, mask_pattern=None):
+    """``pto.tscatter`` tile scatter wrapper."""
+    _pto.tscatter(
+        unwrap_surface_value(src),
+        unwrap_surface_value(dst),
+        indexes=None if indexes is None else unwrap_surface_value(indexes),
+        mask_pattern=None if mask_pattern is None else _tile_mask_pattern_attr(mask_pattern),
+    )
+
+
 def tsel(mask, src0, src1, dst, *, tmp=None):
     """``pto.tsel ins(mask, src0, src1, tmp) outs(dst)`` with synthesized scratch when omitted."""
     resolved_tmp = tmp if tmp is not None else _resolve_selection_tmp(dst, tmp, context="tsel")
@@ -6080,7 +6090,7 @@ __all__ = [
     "texpands", "treshape", "trowexpand", "tcolexpand",
     "trowexpandadd", "trowexpandsub", "trowexpandmul", "trowexpanddiv", "trowexpandmax", "trowexpandmin", "trowexpandexpdif",
     "tcolexpandadd", "tcolexpandsub", "tcolexpandmul", "tcolexpanddiv", "tcolexpandmax", "tcolexpandmin", "tcolexpandexpdif",
-    "tsort32", "tmrgsort", "tgather",
+    "tsort32", "tmrgsort", "tgather", "tscatter",
     "tsel", "tsels", "tcvt",
     "tnot", "tand", "tands", "tor", "tors", "txor", "txors", "tshl", "tshls", "tshr", "tshrs",
     "tpartadd", "tpartmul", "tpartmax", "tpartmin",
