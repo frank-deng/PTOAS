@@ -611,13 +611,6 @@ static llvm::cl::opt<bool> enableSoftPostUpdate(
     llvm::cl::desc("Enable VPTO soft post-update optimization"),
     llvm::cl::init(false));
 
-static llvm::cl::opt<bool> enableVMI(
-    "enable-vmi",
-    llvm::cl::desc("Run the VMI-to-VPTO semantic pipeline for the VPTO "
-                   "backend (enabled by default; use --enable-vmi=false to "
-                   "disable)"),
-    llvm::cl::init(true));
-
 static llvm::cl::opt<bool> emitAddPtrTrace(
     "emit-addptr-trace",
     llvm::cl::desc("Emit addptr trace comments in generated C++ output"),
@@ -2756,8 +2749,7 @@ static void prepareVPTOForEmission(PassManager &pm) {
     kernelModulePM.addPass(pto::createVPTOSoftPostUpdatePass());
   kernelModulePM.addNestedPass<func::FuncOp>(
       pto::createPTOInferVPTOVecScopePass());
-  if (enableVMI)
-    kernelModulePM.addPass(createLoopInvariantCodeMotionPass());
+  kernelModulePM.addPass(createLoopInvariantCodeMotionPass());
   kernelModulePM.addNestedPass<func::FuncOp>(
       pto::createPTONarrowVPTOLoopCountersPass());
   kernelModulePM.addPass(createCanonicalizerPass());
@@ -2886,17 +2878,15 @@ static LogicalResult runVPTOBackendPipeline(OwningOpRef<ModuleOp> &module,
     }
     lowerPTOToVPTOBackend(pm, module.get(), *expandOptions);
   }
-  if (enableVMI) {
-    auto &kernelModulePM = pm.nest<ModuleOp>();
-    // Inline legal direct calls before VMI layout assignment so private helper
-    // bodies participate in one caller-local layout decision. The Func
-    // inliner honors `no_inline` on either the callee or call site. Materialize
-    // the implicit no-inline semantics of `pto.simt_entry` first so the rest of
-    // the pipeline can use MLIR's standard Func inliner implementation.
-    kernelModulePM.addPass(std::make_unique<ApplySIMTEntryNoInlinePass>());
-    kernelModulePM.addPass(createInlinerPass());
-    appendVMISemanticPipeline(kernelModulePM);
-  }
+  auto &kernelModulePM = pm.nest<ModuleOp>();
+  // Inline legal direct calls before VMI layout assignment so private helper
+  // bodies participate in one caller-local layout decision. The Func
+  // inliner honors `no_inline` on either the callee or call site. Materialize
+  // the implicit no-inline semantics of `pto.simt_entry` first so the rest of
+  // the pipeline can use MLIR's standard Func inliner implementation.
+  kernelModulePM.addPass(std::make_unique<ApplySIMTEntryNoInlinePass>());
+  kernelModulePM.addPass(createInlinerPass());
+  appendVMISemanticPipeline(kernelModulePM);
   prepareVPTOForEmission(pm);
   if (failed(applyConfiguredPassManagerCLOptions(
           pm, "VPTO unified emission pipeline")))
@@ -2964,13 +2954,6 @@ int mlir::pto::compilePTOASModule(
                     "--pto-backend=vpto or pto.backend = \"vpto\".\n";
     return 1;
   }
-  if (enableVMI && enableVMI.getNumOccurrences() != 0 &&
-      effectiveBackend != PTOBackend::VPTO) {
-    llvm::errs() << "Error: --enable-vmi requires --pto-backend=vpto or "
-                    "pto.backend = \"vpto\".\n";
-    return 1;
-  }
-
   PTOBuildLevel effectiveLevel = defaultBuildLevel();
   if (!parseBuildLevel(ptoBuildLevel, effectiveLevel)) {
     llvm::errs() << "Error: invalid --pto-level='" << ptoBuildLevel
