@@ -535,13 +535,6 @@ static llvm::cl::opt<bool> enableSoftPostUpdate(
     llvm::cl::desc("Enable VPTO soft post-update optimization"),
     llvm::cl::init(false));
 
-static llvm::cl::opt<bool> enableVMI(
-    "enable-vmi",
-    llvm::cl::desc("Run the VMI-to-VPTO semantic pipeline for the VPTO "
-                   "backend (enabled by default; use --enable-vmi=false to "
-                   "disable)"),
-    llvm::cl::init(true));
-
 static llvm::cl::opt<bool> emitAddPtrTrace(
     "emit-addptr-trace",
     llvm::cl::desc("Emit addptr trace comments in generated C++ output"),
