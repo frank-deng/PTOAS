@@ -27,6 +27,51 @@ def _init_ub_buffer(dst: pto.Tile):
 
 _SCATTER_MASK_DTYPES = [(dtype, dtype) for dtype in NUMERIC_DTYPES]
 
+
+def _template_tscatter_mask_row(src: pto.Tile, dst: pto.Tile, interleave_args):
+    dtype = dst.dtype
+    valid_rows, valid_cols = src.valid_shape
+    lanes = pto.elements_per_vreg(dtype)
+    times = 1 << len(interleave_args)
+    dst_valid_col = valid_cols * times
+    zeros = pto.vbr(_scalar_literal(dtype, 0))
+    for row in range(0, valid_rows, 1):
+        remained = dst_valid_col
+        for col in range(0, valid_cols, lanes):
+            src_reg = pto.vlds(src[row, col:])
+            if not interleave_args:
+                mask, remained = pto.make_mask(dtype, remained)
+                pto.vsts(src_reg, dst[row, col:], mask)
+            elif len(interleave_args) == 1:
+                if interleave_args[0]:
+                    reg0, reg1 = pto.vintlv(src_reg, zeros)
+                else:
+                    reg0, reg1 = pto.vintlv(zeros, src_reg)
+                mask, remained = pto.make_mask(dtype, remained)
+                pto.vsts(reg0, dst[row, col * times:], mask)
+                mask, remained = pto.make_mask(dtype, remained)
+                pto.vsts(reg1, dst[row, col * times + lanes:], mask)
+            else:
+                if interleave_args[0]:
+                    tmp0, tmp1 = pto.vintlv(src_reg, zeros)
+                else:
+                    tmp0, tmp1 = pto.vintlv(zeros, src_reg)
+                if interleave_args[1]:
+                    reg0, reg1 = pto.vintlv(tmp0, zeros)
+                    reg2, reg3 = pto.vintlv(tmp1, zeros)
+                else:
+                    reg0, reg1 = pto.vintlv(zeros, tmp0)
+                    reg2, reg3 = pto.vintlv(zeros, tmp1)
+                mask, remained = pto.make_mask(dtype, remained)
+                pto.vsts(reg0, dst[row, col * times:], mask)
+                mask, remained = pto.make_mask(dtype, remained)
+                pto.vsts(reg1, dst[row, col * times + lanes:], mask)
+                mask, remained = pto.make_mask(dtype, remained)
+                pto.vsts(reg2, dst[row, col * times + lanes * 2:], mask)
+                mask, remained = pto.make_mask(dtype, remained)
+                pto.vsts(reg3, dst[row, col * times + lanes * 3:], mask)
+
+
 @tilelib.tile_template(
     op="pto.tscatter",
     target="a5",
@@ -58,6 +103,48 @@ def template_tscatter_index(src: pto.Tile, dst: pto.Tile, idx: pto.Tile):
 @tilelib.tile_template(
     op="pto.tscatter",
     target="a5",
+    name="template_tscatter_mask_row_p1111",
+    dtypes=_SCATTER_MASK_DTYPES,
+    iteration_axis="none",
+    op_engine="vector",
+    op_class="other",
+    layouts=("row_major",),
+    loop_depth=2,
+    is_post_update=False,
+    tags=("scatter", "mask", "row", "p1111"),
+)
+def template_tscatter_mask_row_p1111(src: pto.Tile, dst: pto.Tile):
+    _template_tscatter_mask_row(src, dst, ())
+
+
+@tilelib.tile_template(
+    op="pto.tscatter",
+    target="a5",
+    name="template_tscatter_mask_col_p1111",
+    dtypes=_SCATTER_MASK_DTYPES,
+    iteration_axis="none",
+    op_engine="vector",
+    op_class="other",
+    layouts=("row_major",),
+    loop_depth=2,
+    is_post_update=False,
+    tags=("scatter", "mask", "col", "p1111"),
+)
+def template_tscatter_mask_row_p1111(src: pto.Tile, dst: pto.Tile):
+    dtype = dst.dtype
+    valid_rows, valid_cols = src.valid_shape
+    lanes = pto.elements_per_vreg(dtype)
+    for row in range(0, valid_rows, 1):
+        remained = valid_cols
+        for col in range(0, valid_cols, lanes):
+            mask, remained = pto.make_mask(dtype, remained)
+            data = pto.vlds(src[row, col:])
+            pto.vsts(data, dst[row, col:], mask)
+
+
+@tilelib.tile_template(
+    op="pto.tscatter",
+    target="a5",
     name="template_tscatter_mask_row_p0101",
     dtypes=_SCATTER_MASK_DTYPES,
     iteration_axis="none",
@@ -69,21 +156,7 @@ def template_tscatter_index(src: pto.Tile, dst: pto.Tile, idx: pto.Tile):
     tags=("scatter", "mask", "row", "p0101"),
 )
 def template_tscatter_mask_row_p0101(src: pto.Tile, dst: pto.Tile):
-    dtype = dst.dtype
-    valid_rows, valid_cols = src.valid_shape
-    lanes = pto.elements_per_vreg(dtype)
-    times = 2
-    dst_valid_col = valid_cols * times
-    zeros = pto.vbr(_scalar_literal(dtype, 0))
-    for row in range(0, valid_rows, 1):
-        remained = dst_valid_col
-        for col in range(0, valid_cols, lanes):
-            src_reg = pto.vlds(src[row, col:])
-            dst_reg0, dst_reg1 = pto.vintlv(zeros, src_reg)
-            mask, remained = pto.make_mask(dtype, remained)
-            pto.vsts(dst_reg0, dst[row, col * times:], mask)
-            mask, remained = pto.make_mask(dtype, remained)
-            pto.vsts(dst_reg1, dst[row, col * times + lanes:], mask)
+    _template_tscatter_mask_row(src, dst, (False,))
 
 
 @tilelib.tile_template(
@@ -100,21 +173,7 @@ def template_tscatter_mask_row_p0101(src: pto.Tile, dst: pto.Tile):
     tags=("scatter", "mask", "row", "p1010"),
 )
 def template_tscatter_mask_row_p1010(src: pto.Tile, dst: pto.Tile):
-    dtype = dst.dtype
-    valid_rows, valid_cols = src.valid_shape
-    lanes = pto.elements_per_vreg(dtype)
-    times = 2
-    dst_valid_col = valid_cols * times
-    zeros = pto.vbr(_scalar_literal(dtype, 0))
-    for row in range(0, valid_rows, 1):
-        remained = dst_valid_col
-        for col in range(0, valid_cols, lanes):
-            src_reg = pto.vlds(src[row, col:])
-            dst_reg0, dst_reg1 = pto.vintlv(src_reg, zeros)
-            mask, remained = pto.make_mask(dtype, remained)
-            pto.vsts(dst_reg0, dst[row, col * times:], mask)
-            mask, remained = pto.make_mask(dtype, remained)
-            pto.vsts(dst_reg1, dst[row, col * times + lanes:], mask)
+    _template_tscatter_mask_row(src, dst, (True,))
 
 
 @tilelib.tile_template(
@@ -131,27 +190,7 @@ def template_tscatter_mask_row_p1010(src: pto.Tile, dst: pto.Tile):
     tags=("scatter", "mask", "row", "p0001"),
 )
 def template_tscatter_mask_row_p0001(src: pto.Tile, dst: pto.Tile):
-    dtype = dst.dtype
-    valid_rows, valid_cols = src.valid_shape
-    lanes = pto.elements_per_vreg(dtype)
-    times = 4
-    dst_valid_col = valid_cols * times
-    zeros = pto.vbr(_scalar_literal(dtype, 0))
-    for row in range(0, valid_rows, 1):
-        remained = dst_valid_col
-        for col in range(0, valid_cols, lanes):
-            src_reg = pto.vlds(src[row, col:])
-            tmp_reg0, tmp_reg1 = pto.vintlv(zeros, src_reg)
-            dst_reg0, dst_reg1 = pto.vintlv(zeros, tmp_reg0)
-            dst_reg2, dst_reg3 = pto.vintlv(zeros, tmp_reg1)
-            mask, remained = pto.make_mask(dtype, remained)
-            pto.vsts(dst_reg0, dst[row, col * times:], mask)
-            mask, remained = pto.make_mask(dtype, remained)
-            pto.vsts(dst_reg1, dst[row, col * times + lanes:], mask)
-            mask, remained = pto.make_mask(dtype, remained)
-            pto.vsts(dst_reg1, dst[row, col * times + lanes * 2:], mask)
-            mask, remained = pto.make_mask(dtype, remained)
-            pto.vsts(dst_reg1, dst[row, col * times + lanes * 3:], mask)
+    _template_tscatter_mask_row(src, dst, (False, False))
 
 
 @tilelib.tile_template(
@@ -168,27 +207,7 @@ def template_tscatter_mask_row_p0001(src: pto.Tile, dst: pto.Tile):
     tags=("scatter", "mask", "row", "p0010"),
 )
 def template_tscatter_mask_row_p0010(src: pto.Tile, dst: pto.Tile):
-    dtype = dst.dtype
-    valid_rows, valid_cols = src.valid_shape
-    lanes = pto.elements_per_vreg(dtype)
-    times = 4
-    dst_valid_col = valid_cols * times
-    zeros = pto.vbr(_scalar_literal(dtype, 0))
-    for row in range(0, valid_rows, 1):
-        remained = dst_valid_col
-        for col in range(0, valid_cols, lanes):
-            src_reg = pto.vlds(src[row, col:])
-            tmp_reg0, tmp_reg1 = pto.vintlv(src_reg, zeros)
-            dst_reg0, dst_reg1 = pto.vintlv(zeros, tmp_reg0)
-            dst_reg2, dst_reg3 = pto.vintlv(zeros, tmp_reg1)
-            mask, remained = pto.make_mask(dtype, remained)
-            pto.vsts(dst_reg0, dst[row, col * times:], mask)
-            mask, remained = pto.make_mask(dtype, remained)
-            pto.vsts(dst_reg1, dst[row, col * times + lanes:], mask)
-            mask, remained = pto.make_mask(dtype, remained)
-            pto.vsts(dst_reg1, dst[row, col * times + lanes * 2:], mask)
-            mask, remained = pto.make_mask(dtype, remained)
-            pto.vsts(dst_reg1, dst[row, col * times + lanes * 3:], mask)
+    _template_tscatter_mask_row(src, dst, (True, False))
 
 
 @tilelib.tile_template(
@@ -205,27 +224,7 @@ def template_tscatter_mask_row_p0010(src: pto.Tile, dst: pto.Tile):
     tags=("scatter", "mask", "row", "p0100"),
 )
 def template_tscatter_mask_row_p0100(src: pto.Tile, dst: pto.Tile):
-    dtype = dst.dtype
-    valid_rows, valid_cols = src.valid_shape
-    lanes = pto.elements_per_vreg(dtype)
-    times = 4
-    dst_valid_col = valid_cols * times
-    zeros = pto.vbr(_scalar_literal(dtype, 0))
-    for row in range(0, valid_rows, 1):
-        remained = dst_valid_col
-        for col in range(0, valid_cols, lanes):
-            src_reg = pto.vlds(src[row, col:])
-            tmp_reg0, tmp_reg1 = pto.vintlv(zeros, src_reg)
-            dst_reg0, dst_reg1 = pto.vintlv(tmp_reg0, zeros)
-            dst_reg2, dst_reg3 = pto.vintlv(tmp_reg1, zeros)
-            mask, remained = pto.make_mask(dtype, remained)
-            pto.vsts(dst_reg0, dst[row, col * times:], mask)
-            mask, remained = pto.make_mask(dtype, remained)
-            pto.vsts(dst_reg1, dst[row, col * times + lanes:], mask)
-            mask, remained = pto.make_mask(dtype, remained)
-            pto.vsts(dst_reg1, dst[row, col * times + lanes * 2:], mask)
-            mask, remained = pto.make_mask(dtype, remained)
-            pto.vsts(dst_reg1, dst[row, col * times + lanes * 3:], mask)
+    _template_tscatter_mask_row(src, dst, (False, True))
 
 
 @tilelib.tile_template(
@@ -242,33 +241,27 @@ def template_tscatter_mask_row_p0100(src: pto.Tile, dst: pto.Tile):
     tags=("scatter", "mask", "row", "p1000"),
 )
 def template_tscatter_mask_row_p1000(src: pto.Tile, dst: pto.Tile):
+    _template_tscatter_mask_row(src, dst, (True, True))
+
+
+def _template_tscatter_mask_col(src: pto.Tile, dst: pto.Tile, start, stride):
+    _init_ub_buffer(dst)
     dtype = dst.dtype
     valid_rows, valid_cols = src.valid_shape
     lanes = pto.elements_per_vreg(dtype)
-    times = 4
-    dst_valid_col = valid_cols * times
-    zeros = pto.vbr(_scalar_literal(dtype, 0))
     for row in range(0, valid_rows, 1):
-        remained = dst_valid_col
+        remained = valid_cols
+        row_dst = row * stride + start
         for col in range(0, valid_cols, lanes):
             src_reg = pto.vlds(src[row, col:])
-            tmp_reg0, tmp_reg1 = pto.vintlv(src_reg, zeros)
-            dst_reg0, dst_reg1 = pto.vintlv(tmp_reg0, zeros)
-            dst_reg2, dst_reg3 = pto.vintlv(tmp_reg1, zeros)
             mask, remained = pto.make_mask(dtype, remained)
-            pto.vsts(dst_reg0, dst[row, col * times:], mask)
-            mask, remained = pto.make_mask(dtype, remained)
-            pto.vsts(dst_reg1, dst[row, col * times + lanes:], mask)
-            mask, remained = pto.make_mask(dtype, remained)
-            pto.vsts(dst_reg1, dst[row, col * times + lanes * 2:], mask)
-            mask, remained = pto.make_mask(dtype, remained)
-            pto.vsts(dst_reg1, dst[row, col * times + lanes * 3:], mask)
+            pto.vsts(src_reg, dst[row_dst, col:], mask)
 
 
 @tilelib.tile_template(
     op="pto.tscatter",
     target="a5",
-    name="template_tscatter_mask_row_p1111",
+    name="template_tscatter_mask_col_p0101",
     dtypes=_SCATTER_MASK_DTYPES,
     iteration_axis="none",
     op_engine="vector",
@@ -276,15 +269,93 @@ def template_tscatter_mask_row_p1000(src: pto.Tile, dst: pto.Tile):
     layouts=("row_major",),
     loop_depth=2,
     is_post_update=False,
-    tags=("scatter", "mask", "row", "p1111"),
+    tags=("scatter", "mask", "col", "p0101"),
 )
-def template_tscatter_mask_row_p1111(src: pto.Tile, dst: pto.Tile):
-    dtype = dst.dtype
-    valid_rows, valid_cols = src.valid_shape
-    lanes = pto.elements_per_vreg(dtype)
-    for row in range(0, valid_rows, 1):
-        remained = valid_cols
-        for col in range(0, valid_cols, lanes):
-            mask, remained = pto.make_mask(dtype, remained)
-            data = pto.vlds(src[row, col:])
-            pto.vsts(data, dst[row, col:], mask)
+def template_tscatter_mask_col_p0101(src: pto.Tile, dst: pto.Tile):
+    _template_tscatter_mask_col(src, dst, 1, 2)
+
+
+@tilelib.tile_template(
+    op="pto.tscatter",
+    target="a5",
+    name="template_tscatter_mask_col_p1010",
+    dtypes=_SCATTER_MASK_DTYPES,
+    iteration_axis="none",
+    op_engine="vector",
+    op_class="other",
+    layouts=("row_major",),
+    loop_depth=2,
+    is_post_update=False,
+    tags=("scatter", "mask", "col", "p1010"),
+)
+def template_tscatter_mask_col_p1010(src: pto.Tile, dst: pto.Tile):
+    _template_tscatter_mask_col(src, dst, 0, 2)
+
+
+@tilelib.tile_template(
+    op="pto.tscatter",
+    target="a5",
+    name="template_tscatter_mask_col_p1000",
+    dtypes=_SCATTER_MASK_DTYPES,
+    iteration_axis="none",
+    op_engine="vector",
+    op_class="other",
+    layouts=("row_major",),
+    loop_depth=2,
+    is_post_update=False,
+    tags=("scatter", "mask", "col", "p1000"),
+)
+def template_tscatter_mask_col_p1000(src: pto.Tile, dst: pto.Tile):
+    _template_tscatter_mask_col(src, dst, 0, 4)
+
+
+@tilelib.tile_template(
+    op="pto.tscatter",
+    target="a5",
+    name="template_tscatter_mask_col_p0100",
+    dtypes=_SCATTER_MASK_DTYPES,
+    iteration_axis="none",
+    op_engine="vector",
+    op_class="other",
+    layouts=("row_major",),
+    loop_depth=2,
+    is_post_update=False,
+    tags=("scatter", "mask", "col", "p0100"),
+)
+def template_tscatter_mask_col_p1000(src: pto.Tile, dst: pto.Tile):
+    _template_tscatter_mask_col(src, dst, 1, 4)
+
+
+@tilelib.tile_template(
+    op="pto.tscatter",
+    target="a5",
+    name="template_tscatter_mask_col_p0010",
+    dtypes=_SCATTER_MASK_DTYPES,
+    iteration_axis="none",
+    op_engine="vector",
+    op_class="other",
+    layouts=("row_major",),
+    loop_depth=2,
+    is_post_update=False,
+    tags=("scatter", "mask", "col", "p0010"),
+)
+def template_tscatter_mask_col_p1000(src: pto.Tile, dst: pto.Tile):
+    _template_tscatter_mask_col(src, dst, 2, 4)
+
+
+@tilelib.tile_template(
+    op="pto.tscatter",
+    target="a5",
+    name="template_tscatter_mask_col_p0001",
+    dtypes=_SCATTER_MASK_DTYPES,
+    iteration_axis="none",
+    op_engine="vector",
+    op_class="other",
+    layouts=("row_major",),
+    loop_depth=2,
+    is_post_update=False,
+    tags=("scatter", "mask", "col", "p0001"),
+)
+def template_tscatter_mask_col_p1000(src: pto.Tile, dst: pto.Tile):
+    _template_tscatter_mask_col(src, dst, 3, 4)
+

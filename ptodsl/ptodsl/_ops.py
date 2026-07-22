@@ -3632,12 +3632,13 @@ def tgatherb(src, offsets, dst):
     )
 
 
-def tscatter(src, dst, *, indexes=None, mask_pattern=None):
+def tscatter(src, dst, *, indexes=None, direction=None, mask_pattern=None):
     """``pto.tscatter`` tile scatter wrapper."""
     _pto.tscatter(
         unwrap_surface_value(src),
         unwrap_surface_value(dst),
         indexes=None if indexes is None else unwrap_surface_value(indexes),
+        direction=None if direction is None else direction,
         mask_pattern=None if mask_pattern is None else _tile_mask_pattern_attr(mask_pattern),
     )
 
