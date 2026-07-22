@@ -773,6 +773,13 @@ def inline_simt_launch_dims_probe(
         pto.stg(tid, gm, scalar.index_cast(tid))
 
 
+@pto.jit(target="a5", mode="explicit")
+def inline_simt_dynamic_launch_dim_probe(*, TRACE_TOKEN: pto.const_expr = 0):
+    dynamic_dim = pto.const(32, dtype=pto.i32)
+    with pto.simt(dynamic_dim, 1, 1):
+        pto.get_tid_x()
+
+
 @pto.simt
 def simt_tid_probe():
     pto.get_tid_x()
@@ -964,6 +971,23 @@ def alloc_buffer_outside_simt_probe():
     _ = pto.alloc_buffer((32,), pto.f32)
 
 
+@pto.tileop
+def alloc_buffer_tileop_helper():
+    _ = pto.alloc_buffer((32,), pto.f32)
+    tileop_noop_simt_probe[1, 1, 1]()
+
+
+@pto.jit(target="a5", mode="explicit", kernel_kind="vector")
+def alloc_buffer_tileop_helper_probe():
+    alloc_buffer_tileop_helper()
+
+
+@pto.jit(target="a5", mode="explicit")
+def alloc_buffer_inline_simt_probe():
+    with pto.simt(32, 1, 1):
+        _ = pto.alloc_buffer((32,), pto.f32)
+
+
 @pto.simt
 def rmsnorm_alloc_buffer_frag_helper(
     w_ub: pto.ptr(pto.f32, pto.MemorySpace.UB),
@@ -996,6 +1020,23 @@ def rmsnorm_alloc_buffer_layout_probe(
     pto.mte_ub_gm(y_ub, Y, 4096 * 4, nburst=(1, 0, 0))
     pto.mte_ub_gm(rstd_ub, RSTD, 4, nburst=(1, 0, 0))
     _ = reduce_scratch
+
+
+@pto.simt
+def simt_alloc_buffer_arg_probe(buf: pto.ptr(pto.f32, "ub")):
+    _ = buf
+
+
+@pto.jit(target="a5", mode="explicit")
+def simt_helper_reject_alloc_buffer_probe():
+    scratch = pto.alloc_buffer((32,), pto.f32)
+    pto.simt_launch(simt_alloc_buffer_arg_probe, scratch, dims=(32, 1, 1))
+
+
+@pto.jit(target="a5", mode="explicit")
+def simt_helper_reject_alloc_buffer_offset_probe():
+    scratch = pto.alloc_buffer((32,), pto.f32)
+    pto.simt_launch(simt_alloc_buffer_arg_probe, scratch + 4, dims=(32, 1, 1))
 
 
 @pto.jit(target="a5")
@@ -4524,45 +4565,49 @@ def main() -> None:
         f"unexpected inline subkernel scope observations: {INLINE_SUBKERNEL_SCOPE_OBSERVATIONS!r}",
     )
     expect(
-        inline_subkernel_scope_text.count("pto.store_vfsimt_info") == 1,
-        "inline pto.simt() should materialize one caller-side store_vfsimt_info before the helper call",
+        inline_subkernel_scope_text.count("pto.section.simt") == 1
+        and re.search(r"pto\.section\.simt\s*<<<", inline_subkernel_scope_text) is not None,
+        "inline pto.simt() should lower to one inline pto.section.simt region",
     )
     expect(
-        re.search(r"call @inline_simt_[0-9]+__ptodsl_[0-9a-f]+\([^\\n]*\)", inline_subkernel_scope_text) is not None
+        re.search(r"call @inline_simt_[0-9]+__ptodsl_[0-9a-f]+\([^\\n]*\)", inline_subkernel_scope_text) is None
         and re.search(r"call @inline_tileop_[0-9]+__ptodsl_[0-9a-f]+\([^\\n]*\)", inline_subkernel_scope_text) is not None,
-        "inline pto.simt()/pto.tileop() scopes should each lower to one helper call",
+        "inline pto.simt() should stay in-place while inline pto.tileop() still lowers to one helper call",
     )
     expect(
         "pto.tileop.helper" in inline_subkernel_scope_text
         and "pto.section.vector {" not in inline_subkernel_scope_text
         and "pto.section.cube {" not in inline_subkernel_scope_text
         and "pto.store" in inline_subkernel_scope_text,
-        "outlined inline helpers should mark TileOp helpers and preserve SIMT scalar ops",
+        "outlined inline TileOp helpers should mark TileOp helpers and preserve SIMT scalar ops",
     )
 
     inline_simt_launch_text = inline_simt_launch_dims_probe.compile(TRACE_TOKEN=1).mlir_text()
     expect_parse_roundtrip_and_verify(inline_simt_launch_text, "inline simt launch-dims specialization")
     expect(
-        re.search(r"pto\.simt_launch @inline_simt_[0-9]+__ptodsl_[0-9a-f]+<<<", inline_simt_launch_text)
-        is not None,
-        "with pto.simt(dim_x, dim_y, dim_z) should emit VPTO simt_launch sugar",
+        "pto.section.simt<<<32, 2, 1>>>" in inline_simt_launch_text,
+        "with pto.simt(dim_x, dim_y, dim_z) should emit static inline pto.section.simt launch dims",
     )
     expect(
-        "pto.store_vfsimt_info" not in inline_simt_launch_text,
-        "with pto.simt(dim_x, dim_y, dim_z) should leave launch metadata to simt_launch expansion",
+        "pto.simt_launch" not in inline_simt_launch_text
+        and "pto.store_vfsimt_info" not in inline_simt_launch_text,
+        "with pto.simt(dim_x, dim_y, dim_z) should not emit caller-side SIMT launch metadata",
     )
     expect(
-        re.search(
-            r"func\.func @inline_simt_[0-9]+__ptodsl_[0-9a-f]+\(%arg0: !pto\.ptr<i32, gm>\) attributes \{[^}]*pto\.simt_entry[^}]*\}",
-            inline_simt_launch_text,
-        )
-        is not None,
-        "inline SIMT launch-dims helper should capture enclosing values as helper arguments",
+        re.search(r"func\.func @inline_simt_[0-9]+__ptodsl_[0-9a-f]+", inline_simt_launch_text)
+        is None
+        and "pto.simt_entry" not in inline_simt_launch_text,
+        "inline SIMT launch-dims body should remain in the enclosing kernel during DSL tracing",
     )
     expect_raises(
         TypeError,
         lambda: pto.simt(32, 1),
         "expects exactly three",
+    )
+    expect_raises(
+        TypeError,
+        lambda: inline_simt_dynamic_launch_dim_probe.compile(TRACE_TOKEN=1),
+        "static Python int",
     )
 
     simt_text = simt_helper_lowering_probe.compile(TRACE_TOKEN=1).mlir_text()
@@ -4604,6 +4649,10 @@ def main() -> None:
         "alloc_buffer should lower to an LLVM stack allocation in the SIMT helper",
     )
     expect(
+        "pto.persistent" not in alloc_buffer_local_text,
+        "alloc_buffer inside a SIMT helper should remain section-local",
+    )
+    expect(
         re.search(
             r"func\.func @alloc_buffer_local_helper__simt_\d+\(\) attributes \{pto\.simt_entry\}",
             alloc_buffer_local_text,
@@ -4611,10 +4660,24 @@ def main() -> None:
         is not None,
         "alloc_buffer probe should keep allocation inside the SIMT helper body",
     )
-    expect_raises(
-        RuntimeError,
-        alloc_buffer_outside_simt_probe.compile,
-        "pto.alloc_buffer(...) may only be used inside a @pto.simt helper or inline pto.simt() scope",
+    alloc_buffer_top_level_text = alloc_buffer_outside_simt_probe.compile().mlir_text()
+    expect_parse_roundtrip_and_verify(alloc_buffer_top_level_text, "alloc_buffer top-level specialization")
+    expect(
+        "llvm.alloca" in alloc_buffer_top_level_text and "pto.persistent" in alloc_buffer_top_level_text,
+        "alloc_buffer outside a SIMT helper should be marked as a persistent fragment candidate",
+    )
+    alloc_buffer_tileop_helper_text = alloc_buffer_tileop_helper_probe.compile().mlir_text()
+    expect_parse_roundtrip_and_verify(alloc_buffer_tileop_helper_text, "alloc_buffer tileop helper specialization")
+    expect(
+        "llvm.alloca" in alloc_buffer_tileop_helper_text
+        and "pto.persistent" not in alloc_buffer_tileop_helper_text,
+        "alloc_buffer inside a TileOp helper should remain local",
+    )
+    alloc_buffer_inline_simt_text = alloc_buffer_inline_simt_probe.compile().mlir_text()
+    expect_parse_roundtrip_and_verify(alloc_buffer_inline_simt_text, "alloc_buffer inline simt specialization")
+    expect(
+        "llvm.alloca" in alloc_buffer_inline_simt_text and "pto.persistent" not in alloc_buffer_inline_simt_text,
+        "alloc_buffer inside an inline SIMT section should remain local",
     )
     rmsnorm_alloc_buffer_text = rmsnorm_alloc_buffer_layout_probe.compile().mlir_text()
     expect_parse_roundtrip_and_verify(rmsnorm_alloc_buffer_text, "RMSNorm hand-authored UB layout specialization")
@@ -4630,7 +4693,17 @@ def main() -> None:
     expect(
         re.search(r"call @rmsnorm_alloc_buffer_frag_helper__simt_\d+\(", rmsnorm_alloc_buffer_text)
         is not None,
-        "RMSNorm alloc_buffer layout should pass UB scratch pointers through the existing SIMT helper call path",
+        "RMSNorm alloc_buffer layout should pass explicitly authored UB pointers through the existing SIMT helper call path",
+    )
+    expect_raises(
+        TypeError,
+        lambda: simt_helper_reject_alloc_buffer_probe.compile(),
+        "do not accept pto.alloc_buffer",
+    )
+    expect_raises(
+        TypeError,
+        lambda: simt_helper_reject_alloc_buffer_offset_probe.compile(),
+        "do not accept pto.alloc_buffer",
     )
 
     simt_launch_text = simt_explicit_launch_probe.compile(TRACE_TOKEN=1).mlir_text()

@@ -88,6 +88,7 @@ from mlir.ir import (
     Operation,
     Type,
     TypeAttr,
+    UnitAttr,
 )
 
 # Pipe name shorthands → canonical PIPE_* names
@@ -2637,21 +2638,20 @@ def _tile_transfer_partition(tv, tile, *, offsets=None, sizes=None, context: str
 
 def alloc_buffer(shape, dtype, **kwargs):
     """
-    Allocate SIMT lane-local scratch storage and return an address-like value.
+    Allocate explicit-body scratch storage and return an address-like value.
 
-    The allocation emits an LLVM stack allocation in the surrounding SIMT
-    helper. UB scratch uses explicit ``pto.castptr`` / ``pto.addptr`` pointer
-    authoring and an appropriate host launch wrapper.
+    The allocation emits an LLVM stack allocation in the surrounding explicit
+    kernel or helper body. UB scratch uses explicit ``pto.castptr`` /
+    ``pto.addptr`` pointer authoring and an appropriate host launch wrapper.
     """
     if kwargs:
         unexpected = ", ".join(sorted(kwargs))
         raise TypeError(
             f"pto.alloc_buffer(...) does not accept keyword argument(s): {unexpected}. "
-            "It only allocates SIMT local buffers; author UB scratch explicitly with "
+            "It only allocates explicit-body local buffers; author UB scratch explicitly with "
             "pto.castptr/pto.addptr and pass the dynamic UB byte count at launch."
         )
     _require_explicit_mode("pto.alloc_buffer(...)")
-    _require_simt_subkernel("pto.alloc_buffer(...)")
     element_type = _resolve(dtype)
     element_count = _static_alloc_buffer_element_count(shape)
     elem_bytes = _element_bytewidth(element_type)
@@ -2695,13 +2695,16 @@ def _alloc_local_buffer(shape, dtype, element_type, element_count, byte_size):
     i32 = IntegerType.get_signless(32)
     count = _materialize_integer_literal(i32, element_count)
     llvm_ptr_type = Type.parse("!llvm.ptr")
+    attributes = {
+        "elem_type": TypeAttr.get(element_type),
+    }
+    if _is_persistent_alloc_buffer_candidate():
+        attributes["pto.persistent"] = UnitAttr.get()
     alloca = Operation.create(
         "llvm.alloca",
         results=[llvm_ptr_type],
         operands=[count],
-        attributes={
-            "elem_type": TypeAttr.get(element_type),
-        },
+        attributes=attributes,
     ).results[0]
     return AllocatedBufferValue(
         alloca,
@@ -2711,6 +2714,21 @@ def _alloc_local_buffer(shape, dtype, element_type, element_count, byte_size):
         element_count=element_count,
         byte_size=byte_size,
     )
+
+
+def _is_persistent_alloc_buffer_candidate() -> bool:
+    try:
+        from ._tracing.active import current_session
+        session = current_session()
+    except Exception:
+        session = None
+    if session is None:
+        return False
+    if getattr(session.module_spec, "entry", False) is not True:
+        return False
+    if session.current_function is not session.entry_function:
+        return False
+    return session.current_subkernel is None
 
 
 def _normalize_alloc_buffer_shape_metadata(shape):
