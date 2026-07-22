@@ -504,6 +504,13 @@ static void appendOpContextAttrs(
           stringifyMaskPattern(maskPatternAttr.getValue()).str());
     }
   }
+  if (auto tscatter = dyn_cast<pto::TScatterOp>(op)) {
+    if (auto directionAttr = tscatter.getDirectionAttr()) {
+      attrs.emplace_back(
+          "direction",
+          llvm::StringRef(stringifyDirection(directionAttr.getValue())).lower());
+    }
+  }
   (void)(tryAppendPrecisionType<pto::TExpOp>(
              op, attrs, pto::ExpPrecision::HighPrecision) ||
          tryAppendPrecisionType<pto::TLogOp>(

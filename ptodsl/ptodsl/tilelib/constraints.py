@@ -30,6 +30,8 @@ from enum import Enum
 
 from .metadata import ScalarSpec, VectorSpec, ViewSpec
 
+_DIRECTION_TOKENS = {"row", "col"}
+
 
 class BLayout(str, Enum):
     ROW_MAJOR = "row_major"
@@ -229,6 +231,18 @@ def evaluate_candidate(
     if context_attrs:
         for name, value in context_attrs.items():
             context.setdefault(name, value)
+
+    if context_attrs and metadata.tags:
+        direction_value = context_attrs.get("direction")
+        if direction_value:
+            tag_values = {t for t in metadata.tags if isinstance(t, str)}
+            direction_tags = tag_values & _DIRECTION_TOKENS
+            if direction_tags and direction_value not in direction_tags:
+                return CandidateLegality(
+                    False,
+                    f"direction {direction_value!r} does not match template tags "
+                    f"{direction_tags}",
+                )
 
     if not passes(metadata.constraints, context):
         return CandidateLegality(False, "custom constraints are not satisfied")

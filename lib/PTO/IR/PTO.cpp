@@ -1095,7 +1095,7 @@ void mlir::pto::TScatterOp::print(OpAsmPrinter &p) {
   }
   p << ") outs(" << getDst() << " : " << getDst().getType() << ")";
   p.printOptionalAttrDict((*this)->getAttrs(),
-                          /*elidedAttrs=*/{"maskPattern"});
+                          /*elidedAttrs=*/{"maskPattern", "direction"});
 }
 
 namespace {

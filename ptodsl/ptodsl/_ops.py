@@ -1080,6 +1080,7 @@ _PREDICATE_PART_TOKENS = {"LOWER", "HIGHER"}
 _PREDICATE_LOAD_DIST_TOKENS = {"NORM", "US", "DS"}
 _PREDICATE_STORE_DIST_TOKENS = {"NORM", "PK"}
 _POST_UPDATE_TOKENS = {"NO_POST_UPDATE", "POST_UPDATE"}
+_DIRECTION_TOKENS = {"row", "col"}
 
 
 def _normalize_mask_pattern(pattern):
@@ -1134,6 +1135,25 @@ def _normalize_cmp_mode(cmp_mode):
 
 def _cmp_mode_attr(cmp_mode):
     return Attribute.parse(f"#pto<cmp {_normalize_cmp_mode(cmp_mode)}>")
+
+
+def _normalize_direction(direction):
+    token = direction
+    if not isinstance(token, str):
+        token = str(token)
+        if "." in token:
+            token = token.rsplit(".", 1)[-1]
+    normalized = token.strip().lower()
+    if normalized not in _DIRECTION_TOKENS:
+        raise ValueError(
+            f"unsupported direction {direction!r}; expected one of row, col"
+        )
+    return normalized
+
+
+def _direction_attr(direction):
+    token = _normalize_direction(direction)
+    return Attribute.parse(f"#pto.direction<{token}>")
 
 
 def _normalize_predicate_part(part):
@@ -3638,7 +3658,7 @@ def tscatter(src, dst, *, indexes=None, direction=None, mask_pattern=None):
         unwrap_surface_value(src),
         unwrap_surface_value(dst),
         indexes=None if indexes is None else unwrap_surface_value(indexes),
-        direction=None if direction is None else direction,
+        direction=None if direction is None else _direction_attr(direction),
         mask_pattern=None if mask_pattern is None else _tile_mask_pattern_attr(mask_pattern),
     )
 

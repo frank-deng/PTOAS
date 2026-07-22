@@ -1146,6 +1146,20 @@ def PTO_AccToVecModeAttr : PTO_Attr<"AccToVecMode", "acc_to_vec_mode"> {
 }
 
 //===----------------------------------------------------------------------===//
+// Direction (generic row/col selector, reusable across ops)
+//===----------------------------------------------------------------------===//
+
+def PTO_DirectionEnum : PTO_I32Enum<
+  "Direction", "PTO operation direction", [
+    I32EnumAttrCase<"Row", 0, "row">,
+    I32EnumAttrCase<"Col", 1, "col">
+  ]>;
+
+def PTO_DirectionAttr : EnumAttr<PTO_Dialect, PTO_DirectionEnum, "direction"> {
+  let summary = "direction attribute (row/col)";
+}
+
+//===----------------------------------------------------------------------===//
 // MaskPattern
 //===----------------------------------------------------------------------===//
 
