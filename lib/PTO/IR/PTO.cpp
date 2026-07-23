@@ -1040,7 +1040,7 @@ ParseResult mlir::pto::TScatterOp::parse(OpAsmParser &parser,
     if (parser.parseKeyword("maskPattern") || parser.parseEqual())
       return failure();
     Attribute rawMaskAttr;
-    if (parser.parseAttribute(rawMaskAttr) || parser.parseRBrace())
+    if (parser.parseAttribute(rawMaskAttr))
       return failure();
     auto mp = llvm::dyn_cast<mlir::pto::MaskPatternAttr>(rawMaskAttr);
     if (!mp)
@@ -1048,7 +1048,20 @@ ParseResult mlir::pto::TScatterOp::parse(OpAsmParser &parser,
                               "expected #pto.mask_pattern<Pxxxx> for maskPattern");
     result.addAttribute("maskPattern", mp);
     hasMask = true;
-    if (parser.parseColonType(srcTy) || parser.parseRParen())
+    if (succeeded(parser.parseOptionalComma())) {
+      if (parser.parseKeyword("direction") || parser.parseEqual())
+        return failure();
+      Attribute rawDirAttr;
+      if (parser.parseAttribute(rawDirAttr))
+        return failure();
+      auto dirAttr = llvm::dyn_cast<mlir::pto::DirectionAttr>(rawDirAttr);
+      if (!dirAttr)
+        return parser.emitError(parser.getCurrentLocation(),
+                                "expected #pto<direction row|col> for direction");
+      result.addAttribute("direction", dirAttr);
+    }
+    if (parser.parseRBrace() || parser.parseColonType(srcTy) ||
+        parser.parseRParen())
       return failure();
   } else {
     if (parser.parseOperand(indexes))
@@ -1087,8 +1100,10 @@ ParseResult mlir::pto::TScatterOp::parse(OpAsmParser &parser,
 void mlir::pto::TScatterOp::print(OpAsmPrinter &p) {
   p << " ins(" << getSrc() << ", ";
   if (getMaskPatternAttr()) {
-    p << "{maskPattern = " << getMaskPatternAttr() << "} : "
-      << getSrc().getType();
+    p << "{maskPattern = " << getMaskPatternAttr();
+    if (getDirectionAttr())
+      p << ", direction = " << getDirectionAttr();
+    p << "} : " << getSrc().getType();
   } else {
     p << getIndexes() << " : " << getSrc().getType() << ", "
       << getIndexes().getType();
@@ -12451,12 +12466,23 @@ mlir::LogicalResult mlir::pto::TScatterOp::verify() {
     if (!mp)
       return emitOpError("expects mask-pattern tscatter to provide maskPattern");
     const unsigned times = getMaskScatterTimes(mp);
-    if (srcValid[0] != ShapedType::kDynamic && dstValid[0] != ShapedType::kDynamic &&
-        srcValid[0] != dstValid[0])
-      return emitOpError("expects src and dst to have the same valid rows");
-    if (srcValid[1] != ShapedType::kDynamic && dstValid[1] != ShapedType::kDynamic &&
-        srcValid[1] != static_cast<int64_t>(dstValid[1] * times))
-      return emitOpError("expects src valid cols to equal dst valid cols times the mask expansion factor");
+    bool isCol = getDirectionAttr() &&
+                 getDirectionAttr().getValue() == mlir::pto::Direction::Col;
+    if (!isCol) {
+      if (srcValid[0] != ShapedType::kDynamic && dstValid[0] != ShapedType::kDynamic &&
+          srcValid[0] != dstValid[0])
+        return emitOpError("expects src and dst to have the same valid rows");
+      if (srcValid[1] != ShapedType::kDynamic && dstValid[1] != ShapedType::kDynamic &&
+          dstValid[1] != static_cast<int64_t>(srcValid[1] * times))
+        return emitOpError("expects dst valid cols to equal src valid cols times the mask expansion factor");
+    } else {
+      if (srcValid[1] != ShapedType::kDynamic && dstValid[1] != ShapedType::kDynamic &&
+          srcValid[1] != dstValid[1])
+        return emitOpError("expects src and dst to have the same valid cols");
+      if (srcValid[0] != ShapedType::kDynamic && dstValid[0] != ShapedType::kDynamic &&
+          dstValid[0] != static_cast<int64_t>(srcValid[0] * times))
+        return emitOpError("expects dst valid rows to equal src valid rows times the mask expansion factor");
+    }
 
     if (srcTB.getBLayoutValueI32() != static_cast<int32_t>(pto::BLayout::RowMajor) ||
         dstTB.getBLayoutValueI32() != static_cast<int32_t>(pto::BLayout::RowMajor))

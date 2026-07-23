@@ -1153,7 +1153,7 @@ def _normalize_direction(direction):
 
 def _direction_attr(direction):
     token = _normalize_direction(direction)
-    return Attribute.parse(f"#pto.direction<{token}>")
+    return Attribute.parse(f"#pto<direction {token}>")
 
 
 def _normalize_predicate_part(part):

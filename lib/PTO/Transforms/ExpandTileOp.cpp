@@ -505,6 +505,11 @@ static void appendOpContextAttrs(
     }
   }
   if (auto tscatter = dyn_cast<pto::TScatterOp>(op)) {
+    if (auto maskPatternAttr = tscatter.getMaskPatternAttr()) {
+      attrs.emplace_back(
+          "mask_pattern",
+          stringifyMaskPattern(maskPatternAttr.getValue()).str());
+    }
     if (auto directionAttr = tscatter.getDirectionAttr()) {
       attrs.emplace_back(
           "direction",

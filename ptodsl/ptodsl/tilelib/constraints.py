@@ -31,6 +31,7 @@ from enum import Enum
 from .metadata import ScalarSpec, VectorSpec, ViewSpec
 
 _DIRECTION_TOKENS = {"row", "col"}
+_MASK_PATTERN_TOKENS = {"p0101", "p1010", "p0001", "p0010", "p0100", "p1000", "p1111"}
 
 
 class BLayout(str, Enum):
@@ -233,15 +234,25 @@ def evaluate_candidate(
             context.setdefault(name, value)
 
     if context_attrs and metadata.tags:
+        tag_values = {t for t in metadata.tags if isinstance(t, str)}
         direction_value = context_attrs.get("direction")
         if direction_value:
-            tag_values = {t for t in metadata.tags if isinstance(t, str)}
             direction_tags = tag_values & _DIRECTION_TOKENS
             if direction_tags and direction_value not in direction_tags:
                 return CandidateLegality(
                     False,
                     f"direction {direction_value!r} does not match template tags "
                     f"{direction_tags}",
+                )
+        mask_pattern_value = context_attrs.get("mask_pattern")
+        if mask_pattern_value:
+            mask_pattern_tags = tag_values & _MASK_PATTERN_TOKENS
+            mp_lower = mask_pattern_value.lower()
+            if mask_pattern_tags and mp_lower not in mask_pattern_tags:
+                return CandidateLegality(
+                    False,
+                    f"mask_pattern {mask_pattern_value!r} does not match template tags "
+                    f"{mask_pattern_tags}",
                 )
 
     if not passes(metadata.constraints, context):
