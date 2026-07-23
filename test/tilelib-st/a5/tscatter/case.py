@@ -15,6 +15,7 @@
 #     specified by the corresponding index value.
 #   - Masked scatter: src elements are placed into dst at positions determined
 #     by a mask pattern (e.g., P0101 interleaves with zeros at 2x expansion).
+#     Both row and col directions are tested.
 
 from pathlib import Path
 import sys
@@ -52,31 +53,63 @@ INDEX_CASES = [
     ("f32_uint32_32x64_32x64",   pto.f32,  pto.ui32, (32, 64),  (32, 64)),
 ]
 
-# --- Masked scatter cases ---
-# (name, dtype, src_shape, dst_shape, pattern)
-MASK_CASES = [
-    ("mask_f16_16x64_16x64_P1111",   pto.f16, (16, 64), (16, 64),  "P1111"),
-    ("mask_f32_16x64_16x64_P1111",   pto.f32, (16, 64), (16, 64),  "P1111"),
-    ("mask_i32_16x64_16x64_P1111",   pto.i32, (16, 64), (16, 64),  "P1111"),
-    ("mask_f16_16x64_16x128_P1010",  pto.f16, (16, 64), (16, 128), "P1010"),
-    ("mask_f16_16x64_16x128_P0101",  pto.f16, (16, 64), (16, 128), "P0101"),
-    ("mask_f32_16x64_16x128_P1010",  pto.f32, (16, 64), (16, 128), "P1010"),
-    ("mask_f32_16x64_16x128_P0101",  pto.f32, (16, 64), (16, 128), "P0101"),
-    ("mask_i32_16x64_16x128_P1010",  pto.i32, (16, 64), (16, 128), "P1010"),
-    ("mask_i32_16x64_16x128_P0101",  pto.i32, (16, 64), (16, 128), "P0101"),
-    ("mask_f16_16x64_16x256_P1000",  pto.f16, (16, 64), (16, 256), "P1000"),
-    ("mask_f16_16x64_16x256_P0100",  pto.f16, (16, 64), (16, 256), "P0100"),
-    ("mask_f16_16x64_16x256_P0010",  pto.f16, (16, 64), (16, 256), "P0010"),
-    ("mask_f16_16x64_16x256_P0001",  pto.f16, (16, 64), (16, 256), "P0001"),
-    ("mask_f32_16x64_16x256_P1000",  pto.f32, (16, 64), (16, 256), "P1000"),
-    ("mask_f32_16x64_16x256_P0100",  pto.f32, (16, 64), (16, 256), "P0100"),
-    ("mask_f32_16x64_16x256_P0010",  pto.f32, (16, 64), (16, 256), "P0010"),
-    ("mask_f32_16x64_16x256_P0001",  pto.f32, (16, 64), (16, 256), "P0001"),
-    ("mask_i32_16x64_16x256_P1000",  pto.i32, (16, 64), (16, 256), "P1000"),
-    ("mask_i32_16x64_16x256_P0100",  pto.i32, (16, 64), (16, 256), "P0100"),
-    ("mask_i32_16x64_16x256_P0010",  pto.i32, (16, 64), (16, 256), "P0010"),
-    ("mask_i32_16x64_16x256_P0001",  pto.i32, (16, 64), (16, 256), "P0001"),
+# --- Masked scatter cases (row direction) ---
+# Row direction: scatter along columns within each row.
+# src(R, C_src) -> dst(R, C_dst), C_dst >= C_src
+# (name, dtype, src_shape, dst_shape, pattern, direction)
+MASK_CASES_ROW = [
+    ("mask_row_f16_16x64_16x64_P1111",   pto.f16, (16, 64), (16, 64),  "P1111", "row"),
+    ("mask_row_f32_16x64_16x64_P1111",   pto.f32, (16, 64), (16, 64),  "P1111", "row"),
+    ("mask_row_i32_16x64_16x64_P1111",   pto.i32, (16, 64), (16, 64),  "P1111", "row"),
+    ("mask_row_f16_16x64_16x128_P1010",  pto.f16, (16, 64), (16, 128), "P1010", "row"),
+    ("mask_row_f16_16x64_16x128_P0101",  pto.f16, (16, 64), (16, 128), "P0101", "row"),
+    ("mask_row_f32_16x64_16x128_P1010",  pto.f32, (16, 64), (16, 128), "P1010", "row"),
+    ("mask_row_f32_16x64_16x128_P0101",  pto.f32, (16, 64), (16, 128), "P0101", "row"),
+    ("mask_row_i32_16x64_16x128_P1010",  pto.i32, (16, 64), (16, 128), "P1010", "row"),
+    ("mask_row_i32_16x64_16x128_P0101",  pto.i32, (16, 64), (16, 128), "P0101", "row"),
+    ("mask_row_f16_16x64_16x256_P1000",  pto.f16, (16, 64), (16, 256), "P1000", "row"),
+    ("mask_row_f16_16x64_16x256_P0100",  pto.f16, (16, 64), (16, 256), "P0100", "row"),
+    ("mask_row_f16_16x64_16x256_P0010",  pto.f16, (16, 64), (16, 256), "P0010", "row"),
+    ("mask_row_f16_16x64_16x256_P0001",  pto.f16, (16, 64), (16, 256), "P0001", "row"),
+    ("mask_row_f32_16x64_16x256_P1000",  pto.f32, (16, 64), (16, 256), "P1000", "row"),
+    ("mask_row_f32_16x64_16x256_P0100",  pto.f32, (16, 64), (16, 256), "P0100", "row"),
+    ("mask_row_f32_16x64_16x256_P0010",  pto.f32, (16, 64), (16, 256), "P0010", "row"),
+    ("mask_row_f32_16x64_16x256_P0001",  pto.f32, (16, 64), (16, 256), "P0001", "row"),
+    ("mask_row_i32_16x64_16x256_P1000",  pto.i32, (16, 64), (16, 256), "P1000", "row"),
+    ("mask_row_i32_16x64_16x256_P0100",  pto.i32, (16, 64), (16, 256), "P0100", "row"),
+    ("mask_row_i32_16x64_16x256_P0010",  pto.i32, (16, 64), (16, 256), "P0010", "row"),
+    ("mask_row_i32_16x64_16x256_P0001",  pto.i32, (16, 64), (16, 256), "P0001", "row"),
 ]
+
+# --- Masked scatter cases (col direction) ---
+# Col direction: scatter across rows, keeping columns intact.
+# src(R_src, C) -> dst(R_dst, C), R_dst >= R_src
+# (name, dtype, src_shape, dst_shape, pattern, direction)
+MASK_CASES_COL = [
+    ("mask_col_f16_16x64_16x64_P1111",   pto.f16, (16, 64), (16, 64),  "P1111", "col"),
+    ("mask_col_f32_16x64_16x64_P1111",   pto.f32, (16, 64), (16, 64),  "P1111", "col"),
+    ("mask_col_i32_16x64_16x64_P1111",   pto.i32, (16, 64), (16, 64),  "P1111", "col"),
+    ("mask_col_f16_16x64_32x64_P1010",   pto.f16, (16, 64), (32, 64),  "P1010", "col"),
+    ("mask_col_f16_16x64_32x64_P0101",   pto.f16, (16, 64), (32, 64),  "P0101", "col"),
+    ("mask_col_f32_16x64_32x64_P1010",   pto.f32, (16, 64), (32, 64),  "P1010", "col"),
+    ("mask_col_f32_16x64_32x64_P0101",   pto.f32, (16, 64), (32, 64),  "P0101", "col"),
+    ("mask_col_i32_16x64_32x64_P1010",   pto.i32, (16, 64), (32, 64),  "P1010", "col"),
+    ("mask_col_i32_16x64_32x64_P0101",   pto.i32, (16, 64), (32, 64),  "P0101", "col"),
+    ("mask_col_f16_16x64_64x64_P1000",   pto.f16, (16, 64), (64, 64),  "P1000", "col"),
+    ("mask_col_f16_16x64_64x64_P0100",   pto.f16, (16, 64), (64, 64),  "P0100", "col"),
+    ("mask_col_f16_16x64_64x64_P0010",   pto.f16, (16, 64), (64, 64),  "P0010", "col"),
+    ("mask_col_f16_16x64_64x64_P0001",   pto.f16, (16, 64), (64, 64),  "P0001", "col"),
+    ("mask_col_f32_16x64_64x64_P1000",   pto.f32, (16, 64), (64, 64),  "P1000", "col"),
+    ("mask_col_f32_16x64_64x64_P0100",   pto.f32, (16, 64), (64, 64),  "P0100", "col"),
+    ("mask_col_f32_16x64_64x64_P0010",   pto.f32, (16, 64), (64, 64),  "P0010", "col"),
+    ("mask_col_f32_16x64_64x64_P0001",   pto.f32, (16, 64), (64, 64),  "P0001", "col"),
+    ("mask_col_i32_16x64_64x64_P1000",   pto.i32, (16, 64), (64, 64),  "P1000", "col"),
+    ("mask_col_i32_16x64_64x64_P0100",   pto.i32, (16, 64), (64, 64),  "P0100", "col"),
+    ("mask_col_i32_16x64_64x64_P0010",   pto.i32, (16, 64), (64, 64),  "P0010", "col"),
+    ("mask_col_i32_16x64_64x64_P0001",   pto.i32, (16, 64), (64, 64),  "P0001", "col"),
+]
+
+MASK_CASES = MASK_CASES_ROW + MASK_CASES_COL
 
 
 # ---------------------------------------------------------------------------
@@ -103,7 +136,7 @@ def _tscatter_index_body(src_ptr, idx_ptr, dst_ptr, *, src_rows, src_cols,
 
 
 def _tscatter_mask_body(src_ptr, dst_ptr, *, src_rows, src_cols,
-                        dst_rows, dst_cols, dtype, pattern):
+                        dst_rows, dst_cols, dtype, pattern, direction):
     src_view = pto.make_tensor_view(src_ptr, shape=[src_rows, src_cols],
                                     strides=[src_cols, 1])
     dst_view = pto.make_tensor_view(dst_ptr, shape=[dst_rows, dst_cols],
@@ -113,7 +146,8 @@ def _tscatter_mask_body(src_ptr, dst_ptr, *, src_rows, src_cols,
     dst_tile = pto.alloc_tile(shape=[dst_rows, dst_cols], dtype=dtype)
 
     pto.tile.load(src_view, src_tile)
-    pto.tile.scatter(src_tile, dst_tile, mask_pattern=pattern)
+    pto.tile.scatter(src_tile, dst_tile, mask_pattern=pattern,
+                     direction=direction)
     pto.tile.store(dst_tile, dst_view)
 
 
@@ -145,12 +179,13 @@ for _name, _src_dtype, _idx_dtype, _src_shape, _idx_shape in INDEX_CASES:
 
 
 _mask_kernels = {}
-for _name, _dtype, _src_shape, _dst_shape, _pattern in MASK_CASES:
+for _name, _dtype, _src_shape, _dst_shape, _pattern, _direction in MASK_CASES:
     _sr, _sc = _src_shape
     _dr, _dc = _dst_shape
 
     def _make_mask(sr=_sr, sc=_sc, dr=_dr, dc=_dc, dtype=_dtype,
-                   pattern=_pattern, kernel_name=f"tscatter_{_name}"):
+                   pattern=_pattern, direction=_direction,
+                   kernel_name=f"tscatter_{_name}"):
         @pto.jit(name=kernel_name, target="a5")
         def _kernel(
             src_ptr: pto.ptr(dtype, "gm"),
@@ -159,7 +194,7 @@ for _name, _dtype, _src_shape, _dst_shape, _pattern in MASK_CASES:
             _tscatter_mask_body(
                 src_ptr, dst_ptr,
                 src_rows=sr, src_cols=sc, dst_rows=dr, dst_cols=dc,
-                dtype=dtype, pattern=pattern,
+                dtype=dtype, pattern=pattern, direction=direction,
             )
         return _kernel
 
@@ -179,32 +214,46 @@ def _scatter_index_golden(src, indices):
     return dst.reshape(src.shape)
 
 
-def _get_scatter_idx(pattern, i, j, dst_cols):
-    if pattern == "P0101":
-        return i * dst_cols + 2 * j + 0
-    elif pattern == "P1010":
-        return i * dst_cols + 2 * j + 1
-    elif pattern == "P0001":
-        return i * dst_cols + 4 * j + 0
-    elif pattern == "P0010":
-        return i * dst_cols + 4 * j + 1
-    elif pattern == "P0100":
-        return i * dst_cols + 4 * j + 2
-    elif pattern == "P1000":
-        return i * dst_cols + 4 * j + 3
-    else:
-        return i * dst_cols + j
+_ROW_PATTERN_PARAMS = {
+    "P0101": (0, 2),
+    "P1010": (1, 2),
+    "P0001": (0, 4),
+    "P0010": (1, 4),
+    "P0100": (2, 4),
+    "P1000": (3, 4),
+    "P1111": (0, 1),
+}
+
+_COL_PATTERN_PARAMS = {
+    "P0101": (1, 2),
+    "P1010": (0, 2),
+    "P0001": (3, 4),
+    "P0010": (2, 4),
+    "P0100": (1, 4),
+    "P1000": (0, 4),
+    "P1111": (0, 1),
+}
 
 
-def _scatter_mask_golden(src, dst_rows, dst_cols, pattern):
-    dst = np.zeros((dst_rows, dst_cols), dtype=src.dtype).flatten()
-    src_flat = src.flatten()
+def _scatter_mask_row_golden(src, dst_rows, dst_cols, pattern):
+    offset, stride = _ROW_PATTERN_PARAMS[pattern]
+    dst = np.zeros((dst_rows, dst_cols), dtype=src.dtype)
     src_rows, src_cols = src.shape
     for i in range(src_rows):
         for j in range(src_cols):
-            idx = _get_scatter_idx(pattern, i, j, dst_cols)
-            dst[idx] = src_flat[i * src_cols + j]
-    return dst.reshape(dst_rows, dst_cols)
+            dst[i, j * stride + offset] = src[i, j]
+    return dst
+
+
+def _scatter_mask_col_golden(src, dst_rows, dst_cols, pattern):
+    start, stride = _COL_PATTERN_PARAMS[pattern]
+    dst = np.zeros((dst_rows, dst_cols), dtype=src.dtype)
+    src_rows, src_cols = src.shape
+    for i in range(src_rows):
+        dst_row = i * stride + start
+        for j in range(src_cols):
+            dst[dst_row, j] = src[i, j]
+    return dst
 
 
 def _make_index_inputs(name, src_dtype, idx_dtype, src_shape, idx_shape):
@@ -249,15 +298,17 @@ for _name, _src_dtype, _idx_dtype, _src_shape, _idx_shape in INDEX_CASES:
         )
     )
 
-for _name, _dtype, _src_shape, _dst_shape, _pattern in MASK_CASES:
+for _name, _dtype, _src_shape, _dst_shape, _pattern, _direction in MASK_CASES:
+    _golden = (_scatter_mask_row_golden if _direction == "row"
+               else _scatter_mask_col_golden)
     CASES.append(
         golden_output_case(
             "tscatter_" + _name,
             _mask_kernels[_name],
             inputs=lambda _n=_name, _d=_dtype, _ss=_src_shape:
                 _make_mask_inputs(_n, _d, _ss),
-            expected=lambda src, _dr=_dst_shape[0], _dc=_dst_shape[1], _p=_pattern:
-                _scatter_mask_golden(src, _dr, _dc, _p),
+            expected=lambda src, _dr=_dst_shape[0], _dc=_dst_shape[1], _p=_pattern, _g=_golden:
+                _g(src, _dr, _dc, _p),
             rtol=1e-6,
             atol=1e-6,
         )
